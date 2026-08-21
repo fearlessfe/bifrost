@@ -997,7 +997,14 @@ bifrost:
   # Cluster mode configuration for distributed deployments
   cluster:
     enabled: false
+    # Cluster transport: mesh or broker
+    type: mesh
     # region: ""               # Region identifier for cluster
+    # Broker transport settings (used when type is broker)
+    broker:
+      address: ""
+      listenPort: 50051
+      tls: false
     peers: []
       # - "bifrost-0.bifrost-headless:7946"
       # - "bifrost-1.bifrost-headless:7946"
