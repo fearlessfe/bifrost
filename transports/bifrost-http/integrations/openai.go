@@ -1563,6 +1563,7 @@ func CreateOpenAIListModelsRouteConfigs(pathPrefix string, handlerStore lib.Hand
 				return nil, errors.New("invalid request type")
 			},
 			ListModelsResponseConverter: func(ctx *schemas.BifrostContext, resp *schemas.BifrostListModelsResponse) (interface{}, error) {
+				lib.StripProviderPrefixesFromModelList(resp, lib.PreferredModelPriorityFn(schemas.OpenAI))
 				return openai.ToOpenAIListModelsResponse(resp), nil
 			},
 			ErrorConverter: func(ctx *schemas.BifrostContext, err *schemas.BifrostError) interface{} {

@@ -262,6 +262,7 @@ func CreateAnthropicListModelsRouteConfigs(pathPrefix string, handlerStore lib.H
 				return nil, errors.New("invalid request type")
 			},
 			ListModelsResponseConverter: func(ctx *schemas.BifrostContext, resp *schemas.BifrostListModelsResponse) (interface{}, error) {
+				lib.StripProviderPrefixesFromModelList(resp, lib.PreferredModelPriorityFn(schemas.Anthropic))
 				return anthropic.ToAnthropicListModelsResponse(resp), nil
 			},
 			ErrorConverter: func(ctx *schemas.BifrostContext, err *schemas.BifrostError) interface{} {
