@@ -1340,6 +1340,11 @@ export const routingRuleSchema = z
 		path: ["scope_id"],
 	});
 
+// Service token creation schema
+export const serviceTokenFormSchema = z.object({
+	name: z.string().trim().min(1, "Token name is required").max(255, "Token name must be less than 255 characters"),
+});
+
 // Budget override form schema (BudgetOverrideDialog)
 export const budgetOverrideFormSchema = z
 	.object({
@@ -1376,3 +1381,4 @@ export type GlobalHeaderFilterConfigSchema = z.infer<typeof globalHeaderFilterCo
 export type GlobalHeaderFilterFormSchema = z.infer<typeof globalHeaderFilterFormSchema>;
 export type RoutingRuleSchema = z.infer<typeof routingRuleSchema>;
 export type BudgetOverrideFormSchema = z.infer<typeof budgetOverrideFormSchema>;
+export type ServiceTokenFormSchema = z.infer<typeof serviceTokenFormSchema>;

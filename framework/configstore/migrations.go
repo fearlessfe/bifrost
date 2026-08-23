@@ -471,6 +471,7 @@ var configstoreMigrationSteps = []migrationStep{
 	{IDs: []string{"add_notifications_table"}, run: migrationAddNotificationsTable},
 	{IDs: []string{"add_batch_jobs_table"}, run: migrationAddBatchJobsTable},
 	{IDs: []string{"add_image_megapixel_tier_pricing_columns"}, run: migrationAddImageMegapixelTierPricingColumns},
+	{IDs: []string{"add_service_tokens_table"}, run: migrationAddServiceTokensTable},
 }
 
 func migrationAddNotificationsTable(ctx context.Context, db *gorm.DB, logger schemas.Logger) error {
@@ -12084,4 +12085,21 @@ func migrationAddImageMegapixelTierPricingColumns(ctx context.Context, db *gorm.
 		return fmt.Errorf("error running add_image_megapixel_tier_pricing_columns migration: %s", err.Error())
 	}
 	return nil
+}
+
+// migrationAddServiceTokensTable creates the service_tokens table for
+// long-lived service tokens (hash-only storage, see tables.ServiceTokensTable).
+func migrationAddServiceTokensTable(ctx context.Context, db *gorm.DB, logger schemas.Logger) error {
+	migrationName := "add_service_tokens_table"
+	logger.Info("[configstore] starting migration %s", migrationName)
+	defer logger.Info("[configstore] finished migration %s", migrationName)
+	return RunSingleMigration(ctx, nil, db, logger, &migrator.Migration{
+		ID: migrationName,
+		Migrate: func(tx *gorm.DB) error {
+			return tx.WithContext(ctx).AutoMigrate(&tables.ServiceTokensTable{})
+		},
+		Rollback: func(tx *gorm.DB) error {
+			return tx.WithContext(ctx).Migrator().DropTable(&tables.ServiceTokensTable{})
+		},
+	})
 }

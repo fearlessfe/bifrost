@@ -144,6 +144,50 @@ curl -X POST http://localhost:8080/v1/chat/completions \
   }'
 ```
 
+## Service Tokens
+
+Service tokens are long-lived credentials for service-to-service calls to the admin API (e.g. provisioning automation). A service token authenticates with the same privileges as Basic auth, without embedding the admin password in your service configuration.
+
+Service tokens are managed via the admin API itself (any authenticated admin credential works: dashboard session, Basic auth, or another service token):
+
+```bash
+# Create a token (optionally with an expiry, RFC 3339)
+curl -X POST http://localhost:8080/api/service-tokens \
+  -u "your-username:your-password" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "provisioner", "expires_at": "2027-01-01T00:00:00Z"}'
+```
+
+The response contains the plaintext token exactly once — store it securely. Bifrost only persists the SHA-256 hash:
+
+```json
+{
+  "id": 1,
+  "name": "provisioner",
+  "token": "bfsvc_<64 hex chars>",
+  "expires_at": "2027-01-01T00:00:00Z",
+  "is_active": true,
+  "created_at": "..."
+}
+```
+
+```bash
+# List tokens (never includes token values or hashes)
+curl http://localhost:8080/api/service-tokens -u "your-username:your-password"
+
+# Revoke a token
+curl -X DELETE http://localhost:8080/api/service-tokens/1 -u "your-username:your-password"
+```
+
+Use the token as a Bearer credential on any admin API endpoint:
+
+```bash
+curl http://localhost:8080/api/governance/virtual-keys \
+  -H "Authorization: Bearer bfsvc_<64 hex chars>"
+```
+
+Revoked, expired, or unknown tokens are rejected with `401 Unauthorized`. The `last_used_at` field in the list response tracks the most recent successful authentication with each token.
+
 ## Important Notes
 
 - **No Restart Required**: Authentication changes take effect immediately without requiring a server restart

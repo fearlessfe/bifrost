@@ -1659,7 +1659,7 @@ export function LogDetailView({
 									<DottedSeparator />
 									<div className="space-y-4">
 										<BlockHeader title="Batch Details" />
-										<div className="grid w-full grid-cols-3 md:grid-cols-1 items-start justify-between gap-4">
+										<div className="grid w-full grid-cols-3 items-start justify-between gap-4 md:grid-cols-1">
 											{batchDebug.batch_id && (
 												<LogEntryDetailsView
 													className="w-full"

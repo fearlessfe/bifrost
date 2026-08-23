@@ -1228,6 +1228,27 @@ func (m *MockConfigStore) DeleteSession(ctx context.Context, token string) error
 	return nil
 }
 
+// Service tokens
+func (m *MockConfigStore) CreateServiceToken(ctx context.Context, token *tables.ServiceTokensTable) error {
+	return nil
+}
+
+func (m *MockConfigStore) GetServiceTokenByHash(ctx context.Context, hash string) (*tables.ServiceTokensTable, error) {
+	return nil, nil
+}
+
+func (m *MockConfigStore) ListServiceTokens(ctx context.Context) ([]tables.ServiceTokensTable, error) {
+	return nil, nil
+}
+
+func (m *MockConfigStore) DeleteServiceToken(ctx context.Context, id uint) error {
+	return nil
+}
+
+func (m *MockConfigStore) TouchServiceTokenLastUsed(ctx context.Context, id uint) error {
+	return nil
+}
+
 // Temp token
 func (m *MockConfigStore) CreateTempToken(ctx context.Context, token *tables.TempToken, tx ...*gorm.DB) error {
 	return nil

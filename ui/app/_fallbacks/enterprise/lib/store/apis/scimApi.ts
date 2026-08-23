@@ -22,7 +22,7 @@ export const useGetSCIMProvidersQuery = (
 	_args?: undefined,
 	_opts?: { skip?: boolean },
 ): {
-	data: unknown[] | undefined;
+	data: Array<{ enabled: boolean }> | undefined;
 	isLoading: boolean;
 	isError: boolean;
 	error: null;
