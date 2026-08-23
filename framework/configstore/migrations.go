@@ -495,6 +495,7 @@ var configstoreMigrationSteps = []migrationStep{
 	{IDs: []string{"add_use_openai_endpoints_column"}, run: migrationAddUseOpenAIEndpointsColumn},
 	{IDs: []string{"add_time_of_day_pricing_columns"}, run: migrationAddTimeOfDayPricingColumns},
 	{IDs: []string{"migrate_vk_standalone_limits_to_model_configs"}, run: migrationMigrateVKStandaloneLimitsToModelConfigs},
+	{IDs: []string{"add_service_tokens_table"}, run: migrationAddServiceTokensTable},
 }
 
 // videoResolutionPricingColumns are the resolution-banded video output rate columns.
@@ -13772,3 +13773,19 @@ func migrationMigrateVKStandaloneLimitsToModelConfigs(ctx context.Context, db *g
 	return nil
 }
 
+// migrationAddServiceTokensTable creates the service_tokens table for
+// long-lived service tokens (hash-only storage, see tables.ServiceTokensTable).
+func migrationAddServiceTokensTable(ctx context.Context, db *gorm.DB, logger schemas.Logger) error {
+	migrationName := "add_service_tokens_table"
+	logger.Info("[configstore] starting migration %s", migrationName)
+	defer logger.Info("[configstore] finished migration %s", migrationName)
+	return RunSingleMigration(ctx, nil, db, logger, &migrator.Migration{
+		ID: migrationName,
+		Migrate: func(tx *gorm.DB) error {
+			return tx.WithContext(ctx).AutoMigrate(&tables.ServiceTokensTable{})
+		},
+		Rollback: func(tx *gorm.DB) error {
+			return tx.WithContext(ctx).Migrator().DropTable(&tables.ServiceTokensTable{})
+		},
+	})
+}
