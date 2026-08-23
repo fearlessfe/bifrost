@@ -495,7 +495,7 @@ export const createColumns = (
 					return <div className="font-mono text-xs">-</div>;
 				}
 				return (
-					<Badge variant="outline" className="font-mono text-[11px] py-0.5 px-1.5 uppercase">
+					<Badge variant="outline" className="px-1.5 py-0.5 font-mono text-[11px] uppercase">
 						{tier}
 					</Badge>
 				);

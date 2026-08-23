@@ -457,7 +457,7 @@ export default function VirtualKeyDetailSheet({
 																						<span>
 																							Resets {parseResetPeriod(b.reset_duration)}
 																							{virtualKey.calendar_aligned && supportsCalendarAlignment(b.reset_duration) && " (calendar)"}
-																			{fiscalQuarterNote(b.reset_duration, b.reset_config)}
+																							{fiscalQuarterNote(b.reset_duration, b.reset_config)}
 																						</span>
 																						{b.last_reset ? (
 																							<span>Last reset {formatDistanceToNow(new Date(b.last_reset), { addSuffix: true })}</span>

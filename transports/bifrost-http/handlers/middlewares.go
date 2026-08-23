@@ -18,6 +18,7 @@ import (
 	providerUtils "github.com/maximhq/bifrost/core/providers/utils"
 	"github.com/maximhq/bifrost/core/schemas"
 	"github.com/maximhq/bifrost/framework/configstore"
+	"github.com/maximhq/bifrost/framework/configstore/tables"
 	"github.com/maximhq/bifrost/framework/encrypt"
 	"github.com/maximhq/bifrost/framework/temptoken"
 	"github.com/maximhq/bifrost/framework/tracing"
@@ -742,6 +743,23 @@ func validateSession(_ *fasthttp.RequestCtx, store configstore.ConfigStore, toke
 	return true
 }
 
+// validateServiceToken checks whether a bfsvc_ Bearer token maps to an active,
+// unexpired service token. On success it also records the last-used timestamp
+// (best-effort — a touch failure does not reject the request).
+func (m *AuthMiddleware) validateServiceToken(_ *fasthttp.RequestCtx, token string) bool {
+	if m.store == nil {
+		return false
+	}
+	serviceToken, err := m.store.GetServiceTokenByHash(context.Background(), encrypt.HashSHA256(token))
+	if err != nil || serviceToken == nil {
+		return false
+	}
+	if err := m.store.TouchServiceTokenLastUsed(context.Background(), serviceToken.ID); err != nil {
+		logger.Warn("failed to update last used timestamp for service token %d: %v", serviceToken.ID, err)
+	}
+	return true
+}
+
 // isInferenceWSEndpoint returns true for WebSocket endpoints that should use
 // standard inference auth (Bearer/Basic/VK) rather than dashboard session tokens.
 func isInferenceWSEndpoint(path string) bool {
@@ -1197,6 +1215,19 @@ func (m *AuthMiddleware) middleware(shouldSkip func(*configstore.AuthConfig, str
 
 				// Verify the session
 				if !validateSession(ctx, m.store, token) {
+					// Long-lived service tokens (bfsvc_ prefix) authenticate as admin,
+					// equivalent to Basic auth. The prefix gate keeps this a fast
+					// string check for every other Bearer credential.
+					if strings.HasPrefix(token, tables.ServiceTokenPrefix) {
+						if m.validateServiceToken(ctx, token) {
+							// Mark as local admin for RBAC bypass
+							ctx.SetUserValue(schemas.IsLocalAdminContextKey, true)
+							next(ctx)
+							return
+						}
+						SendError(ctx, fasthttp.StatusUnauthorized, "Unauthorized")
+						return
+					}
 					// Here we will check if its the base64 of username:password
 					// This is for backward compatibility with the old auth system
 					decodedBytes, err := base64.StdEncoding.DecodeString(token)

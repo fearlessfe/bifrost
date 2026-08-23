@@ -438,6 +438,15 @@ type ConfigStore interface {
 	DeleteSession(ctx context.Context, token string) error
 	FlushSessions(ctx context.Context) error
 
+	// Service token CRUD (long-lived admin-equivalent tokens, hash-only storage)
+	CreateServiceToken(ctx context.Context, token *tables.ServiceTokensTable) error
+	// GetServiceTokenByHash returns the active, unexpired service token for a
+	// SHA-256 hash, or (nil, nil) when no usable token exists.
+	GetServiceTokenByHash(ctx context.Context, hash string) (*tables.ServiceTokensTable, error)
+	ListServiceTokens(ctx context.Context) ([]tables.ServiceTokensTable, error)
+	DeleteServiceToken(ctx context.Context, id uint) error
+	TouchServiceTokenLastUsed(ctx context.Context, id uint) error
+
 	// Temp token CRUD
 	CreateTempToken(ctx context.Context, token *tables.TempToken, tx ...*gorm.DB) error
 	GetTempTokenByHash(ctx context.Context, tokenHash string) (*tables.TempToken, error)

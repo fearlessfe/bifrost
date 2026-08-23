@@ -18,6 +18,7 @@ export * from "./oauth2SessionsApi";
 export * from "./pluginsApi";
 export * from "./providersApi";
 export * from "./promptsApi";
+export * from "./serviceTokensApi";
 export * from "./sessionApi";
 export * from "./skillsApi";
 export * from "./webhooksApi";
