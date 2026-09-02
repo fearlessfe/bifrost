@@ -56,7 +56,7 @@ func newAccountingFixture(t *testing.T) *accountingFixture {
 		VirtualKeys: []configstoreTables.TableVirtualKey{*vk},
 		Budgets:     []configstoreTables.TableBudget{*budget},
 		RateLimits:  []configstoreTables.TableRateLimit{*rl},
-	}, nil)
+	}, nil, nil)
 	require.NoError(t, err)
 
 	resolver := NewBudgetResolver(store, nil, logger, nil)
@@ -68,7 +68,7 @@ func newAccountingFixture(t *testing.T) *accountingFixture {
 
 func (f *accountingFixture) apply(updates ...*UsageUpdate) {
 	for _, u := range updates {
-		f.tracker.UpdateUsage(context.Background(), u)
+		f.tracker.UpdateUsage(context.Background(), settleLimits(f.store, "sk-bf-acct", schemas.OpenAI, "gpt-4", u))
 	}
 	// Let async processing settle.
 	time.Sleep(250 * time.Millisecond)
@@ -89,9 +89,6 @@ func (f *accountingFixture) tokens() int64 {
 // acctUpdate builds a terminal (non-streaming) usage update for accounting tests.
 func acctUpdate(requestID string, attempt int, success bool, cost float64, tokens int64) *UsageUpdate {
 	return &UsageUpdate{
-		VirtualKey:    "sk-bf-acct",
-		Provider:      schemas.OpenAI,
-		Model:         "gpt-4",
 		Success:       success,
 		TokensUsed:    tokens,
 		Cost:          cost,
@@ -124,12 +121,10 @@ func TestAccounting_StreamingChunksAccumulate(t *testing.T) {
 	f := newAccountingFixture(t)
 
 	nonFinal := &UsageUpdate{
-		VirtualKey: "sk-bf-acct", Provider: schemas.OpenAI, Model: "gpt-4",
 		Success: true, TokensUsed: 50, Cost: 0.0, RequestID: "req-s", AttemptNumber: 0,
 		IsStreaming: true, IsFinalChunk: false, HasUsageData: true,
 	}
 	final := &UsageUpdate{
-		VirtualKey: "sk-bf-acct", Provider: schemas.OpenAI, Model: "gpt-4",
 		Success: true, TokensUsed: 0, Cost: 12.5, RequestID: "req-s", AttemptNumber: 0,
 		IsStreaming: true, IsFinalChunk: true, HasUsageData: true,
 	}
@@ -148,7 +143,6 @@ func TestAccounting_FailedStreamingBilledOnceAndAccumulates(t *testing.T) {
 
 	mk := func(reqID string) *UsageUpdate {
 		return &UsageUpdate{
-			VirtualKey: "sk-bf-acct", Provider: schemas.OpenAI, Model: "gpt-4",
 			Success: false, TokensUsed: 200, Cost: 8.0, RequestID: reqID, AttemptNumber: 0,
 			IsStreaming: true, IsFinalChunk: true, HasUsageData: true,
 		}
@@ -218,4 +212,184 @@ func TestAccounting_ZeroCostFailureNotBilled(t *testing.T) {
 	assert.Equal(t, 0.0, f.cost(), "no-usage failure bills no cost")
 	assert.Equal(t, int64(0), f.requests(), "no-usage failure counts no request")
 	assert.Equal(t, int64(0), f.tokens(), "no-usage failure counts no tokens")
+}
+
+// modelScopedFixture wires a user-scoped per-model budget (how an access profile's
+// model-level limits are stored) alongside a user-scoped all-models wildcard, so a
+// settlement can be checked for charging the first and not double-charging the second.
+type modelScopedFixture struct {
+	store   GovernanceStore
+	tracker *UsageTracker
+}
+
+func newModelScopedFixture(t *testing.T) *modelScopedFixture {
+	t.Helper()
+	logger := NewMockLogger()
+	providerName := "openai"
+	userID := "user-alice"
+
+	perModel := buildBudgetWithUsage("model-budget", 1_000_000.0, 0.0, "1d")
+	perModelRL := buildRateLimit("model-rl", 1_000_000_000, 1_000_000)
+	perModelMC := buildModelConfig("mc-user-gpt5", "gpt-5", &providerName, perModel, perModelRL)
+	perModelMC.Scope = configstoreTables.ModelConfigScopeUser
+	perModelMC.ScopeID = &userID
+
+	wildcard := buildBudgetWithUsage("wildcard-budget", 1_000_000.0, 0.0, "1d")
+	wildcardMC := buildModelConfig("mc-user-all", configstoreTables.ModelConfigAllModels, &providerName, wildcard, nil)
+	wildcardMC.Scope = configstoreTables.ModelConfigScopeUser
+	wildcardMC.ScopeID = &userID
+
+	store, err := NewLocalGovernanceStore(context.Background(), logger, nil, &configstore.GovernanceConfig{
+		ModelConfigs: []configstoreTables.TableModelConfig{*perModelMC, *wildcardMC},
+		Budgets:      []configstoreTables.TableBudget{*perModel, *wildcard},
+		RateLimits:   []configstoreTables.TableRateLimit{*perModelRL},
+	}, nil, nil)
+	require.NoError(t, err)
+
+	resolver := NewBudgetResolver(store, nil, logger, nil)
+	tracker := NewUsageTracker(context.Background(), store, resolver, nil, logger)
+	t.Cleanup(func() { _ = tracker.Cleanup() })
+
+	return &modelScopedFixture{store: store, tracker: tracker}
+}
+
+func (f *modelScopedFixture) budgetUsage(id string) float64 {
+	return f.store.GetGovernanceData(context.Background()).Budgets[id].CurrentUsage
+}
+
+func TestReportBatchUsage_ChargesPerModelBudgets(t *testing.T) {
+	f := newModelScopedFixture(t)
+	plugin := &GovernancePlugin{store: f.store, tracker: f.tracker}
+
+	// What a settled batch looks like: the wildcard budget was collected at create
+	// time (and so is already charged the full total), the per-model budget was not.
+	report := batchaccounting.BatchUsageReport{
+		RequestID:  "batch-cost:openai:batch-models",
+		Provider:   schemas.OpenAI,
+		Cost:       30.0,
+		TokensUsed: 300,
+		BudgetIDs:  []string{"wildcard-budget"},
+		UserID:     "user-alice",
+		ModelUsage: []batchaccounting.BatchModelUsage{
+			{Model: "gpt-5", Cost: 20.0, TokensUsed: 200},
+			{Model: "gpt-4o", Cost: 10.0, TokensUsed: 100},
+		},
+	}
+
+	// Settlement is at-least-once, so a repeat must not double-charge.
+	require.NoError(t, plugin.ReportBatchUsage(context.Background(), report))
+	require.NoError(t, plugin.ReportBatchUsage(context.Background(), report))
+
+	assert.Equal(t, 20.0, f.budgetUsage("model-budget"), "the gpt-5 budget takes gpt-5's share, not the batch total")
+	assert.Equal(t, 30.0, f.budgetUsage("wildcard-budget"), "an already-charged budget must not be charged again per model")
+}
+
+// A batch whose models carry no per-model config must behave exactly as before.
+func TestReportBatchUsage_PerModelChargingIsInertWithoutModelConfigs(t *testing.T) {
+	f := newModelScopedFixture(t)
+	plugin := &GovernancePlugin{store: f.store, tracker: f.tracker}
+
+	require.NoError(t, plugin.ReportBatchUsage(context.Background(), batchaccounting.BatchUsageReport{
+		RequestID:  "batch-cost:openai:batch-nomodels",
+		Provider:   schemas.OpenAI,
+		Cost:       12.0,
+		TokensUsed: 100,
+		BudgetIDs:  []string{"wildcard-budget"},
+		UserID:     "user-alice",
+		ModelUsage: []batchaccounting.BatchModelUsage{{Model: "gpt-4o", Cost: 12.0, TokensUsed: 100}},
+	}))
+
+	assert.Equal(t, 0.0, f.budgetUsage("model-budget"), "a model with no config of its own charges nothing extra")
+	assert.Equal(t, 12.0, f.budgetUsage("wildcard-budget"))
+}
+
+// The set a request is checked against, the set named on its log row, and the set its usage is counted
+// against are one list. This is what several independent walks over the holder's shape used to risk: a
+// limit enforced on a request and then not counted lets a caller spend past it forever, and one counted
+// but never enforced drains without ever refusing anything.
+func TestAccounting_ChargesExactlyWhatWasChecked(t *testing.T) {
+	logger := NewMockLogger()
+
+	keyRL := buildRateLimitWithUsage("rl-key", 1_000_000, 0, 1_000_000, 0)
+	openaiRL := buildRateLimitWithUsage("rl-key-openai", 1_000_000, 0, 1_000_000, 0)
+	bedrockRL := buildRateLimitWithUsage("rl-key-bedrock", 1_000_000, 0, 1_000_000, 0)
+	teamRL := buildRateLimitWithUsage("rl-team", 1_000_000, 0, 1_000_000, 0)
+	providerRL := buildRateLimitWithUsage("rl-provider", 1_000_000, 0, 1_000_000, 0)
+	modelRL := buildRateLimitWithUsage("rl-model", 1_000_000, 0, 1_000_000, 0)
+
+	team := buildTeam("team1", "Team 1", nil)
+	team.RateLimitID = &teamRL.ID
+	vk := buildVirtualKeyWithRateLimit("vk1", "sk-bf-charge", "Charging VK", keyRL)
+	vk.TeamID = &team.ID
+	vk.Team = team
+	vk.ProviderConfigs = []configstoreTables.TableVirtualKeyProviderConfig{
+		buildProviderConfigWithRateLimit("openai", []string{"*"}, openaiRL),
+		buildProviderConfigWithRateLimit("bedrock", []string{"*"}, bedrockRL),
+	}
+
+	store, err := NewLocalGovernanceStore(context.Background(), logger, nil, &configstore.GovernanceConfig{
+		VirtualKeys:  []configstoreTables.TableVirtualKey{*vk},
+		Teams:        []configstoreTables.TableTeam{*team},
+		Providers:    []configstoreTables.TableProvider{*buildProviderWithGovernance("openai", nil, providerRL)},
+		ModelConfigs: []configstoreTables.TableModelConfig{*buildModelConfig("mc1", "gpt-4o", nil, nil, modelRL)},
+		RateLimits: []configstoreTables.TableRateLimit{
+			*keyRL, *openaiRL, *bedrockRL, *teamRL, *providerRL, *modelRL,
+		},
+	}, nil, nil)
+	require.NoError(t, err)
+
+	plugin, err := InitFromStore(context.Background(), &Config{IsVkMandatory: boolPtr(false)}, logger, store, nil, nil, nil, nil)
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, plugin.Cleanup()) })
+
+	ctx := resolverCtx(store, "sk-bf-charge")
+
+	// The whole funnel: the check settles what this request answers to, the response counts against it.
+	_, shortCircuit, err := plugin.PreLLMHook(ctx, newChatRequest())
+	require.NoError(t, err)
+	require.Nil(t, shortCircuit, "the request is within every limit, so it is not refused")
+
+	_, _, err = plugin.PostLLMHook(ctx, countableResponse(), nil)
+	require.NoError(t, err)
+	plugin.wg.Wait()
+
+	// What the log row names as co-payers, for a node replaying usage it never saw.
+	recorded, _ := ctx.Value(schemas.BifrostContextKeyGovernanceRateLimitIDs).([]string)
+	require.NotEmpty(t, recorded)
+
+	// What actually moved.
+	counted := []string{}
+	for id, rateLimit := range store.GetGovernanceData(context.Background()).RateLimits {
+		if rateLimit.TokenCurrentUsage > 0 {
+			counted = append(counted, id)
+		}
+	}
+
+	assert.ElementsMatch(t, recorded, counted,
+		"every co-payer recorded was counted, and nothing was counted that was not recorded")
+	assert.ElementsMatch(t,
+		[]string{"rl-provider", "rl-model", "rl-key", "rl-key-openai", "rl-team"}, counted)
+	assert.NotContains(t, counted, "rl-key-bedrock",
+		"a provider this request did not use does not pay for it")
+
+	for _, id := range counted {
+		limit := store.GetGovernanceData(context.Background()).RateLimits[id]
+		assert.Equal(t, int64(1000), limit.TokenCurrentUsage, id)
+		assert.Equal(t, int64(1), limit.RequestCurrentUsage, id)
+	}
+}
+
+// countableResponse is a completed chat response whose usage the accounting path counts.
+func countableResponse() *schemas.BifrostResponse {
+	return &schemas.BifrostResponse{
+		ChatResponse: &schemas.BifrostChatResponse{
+			Model: "gpt-4o",
+			Usage: &schemas.BifrostLLMUsage{PromptTokens: 600, CompletionTokens: 400, TotalTokens: 1000},
+			ExtraFields: schemas.BifrostResponseExtraFields{
+				RequestType:            schemas.ChatCompletionRequest,
+				Provider:               schemas.OpenAI,
+				OriginalModelRequested: "gpt-4o",
+			},
+		},
+	}
 }

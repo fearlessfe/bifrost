@@ -691,6 +691,62 @@ func forEachProviderMigrationDB(t *testing.T, testSuffix string) []namedDB {
 	return dbs
 }
 
+// setupVKTestDBWithoutRotationColumns creates an in-memory SQLite database with
+// governance_virtual_keys in its pre-rotation-migration shape: none of the
+// previous_value*/rotated_at columns and no idx_virtual_key_previous_value_hash
+// index, simulating an upgraded (not fresh) installation.
+func setupVKTestDBWithoutRotationColumns(t *testing.T) *gorm.DB {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err, "Failed to create test database")
+
+	err = db.Exec(`
+		CREATE TABLE governance_virtual_keys (
+			id VARCHAR(255) PRIMARY KEY,
+			name VARCHAR(255) NOT NULL,
+			value TEXT,
+			value_hash VARCHAR(64),
+			encryption_status VARCHAR(20) DEFAULT 'plain_text',
+			config_hash VARCHAR(255),
+			created_at DATETIME NOT NULL,
+			updated_at DATETIME NOT NULL
+		)
+	`).Error
+	require.NoError(t, err, "Failed to create governance_virtual_keys table")
+
+	err = db.Exec(`
+		CREATE TABLE IF NOT EXISTS migrations (
+			id VARCHAR(255) PRIMARY KEY
+		)
+	`).Error
+	require.NoError(t, err, "Failed to create migrations table")
+
+	return db
+}
+
+func TestMigrationAddVKRotationCooldownColumns_CreatesIndex(t *testing.T) {
+	db := setupVKTestDBWithoutRotationColumns(t)
+	ctx := context.Background()
+	mg := db.Migrator()
+
+	require.False(t, mg.HasColumn(&tables.TableVirtualKey{}, "previous_value_hash"),
+		"previous_value_hash column must not exist before migration")
+	require.False(t, mg.HasIndex(&tables.TableVirtualKey{}, "idx_virtual_key_previous_value_hash"),
+		"previous_value_hash index must not exist before migration")
+
+	require.NoError(t, migrationAddVKRotationCooldownColumns(ctx, db, testMigrationLogger))
+
+	for _, column := range []string{"previous_value", "previous_value_hash", "previous_value_expires_at", "rotated_at"} {
+		assert.True(t, mg.HasColumn(&tables.TableVirtualKey{}, column),
+			"%s column should exist after migration", column)
+	}
+	assert.True(t, mg.HasIndex(&tables.TableVirtualKey{}, "idx_virtual_key_previous_value_hash"),
+		"upgrade path must create the previous_value_hash index declared in struct tags")
+
+	// Idempotent: a re-run with the index already present must not fail.
+	require.NoError(t, db.Exec("DELETE FROM migrations WHERE id = ?", "add_vk_rotation_cooldown_columns").Error)
+	require.NoError(t, migrationAddVKRotationCooldownColumns(ctx, db, testMigrationLogger))
+}
+
 func TestMigrationAddStoreRawRequestResponseColumn(t *testing.T) {
 	tests := []struct {
 		name                            string
@@ -2978,4 +3034,69 @@ func TestMigrationAddBudgetResetConfigColumn_NonRollbackable(t *testing.T) {
 	require.NoError(t, db.Where("id = ?", seed.ID).First(&got).Error)
 	assert.Equal(t, time.April, got.QuarterStartMonth(),
 		"the fiscal quarter definition must survive the refused rollback")
+}
+
+// TestMigrationAddBatchJobsAttributionColumns verifies the upgrade path: an existing
+// batch_jobs table gains the requester-identity columns without disturbing the rows
+// already in it (which simply have no identity to recover).
+func TestMigrationAddBatchJobsAttributionColumns(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err, "Failed to create test database")
+	ctx := context.Background()
+	logger := bifrost.NewDefaultLogger(schemas.LogLevelError)
+
+	// Pre-migration shape: the table as migrationAddBatchJobsTable left it.
+	require.NoError(t, db.Exec(`
+		CREATE TABLE batch_jobs (
+			id VARCHAR(512) PRIMARY KEY,
+			provider VARCHAR(255) NOT NULL,
+			batch_id VARCHAR(255) NOT NULL,
+			model VARCHAR(255),
+			endpoint VARCHAR(255),
+			provider_status VARCHAR(50),
+			input_file_id VARCHAR(255),
+			output_file_id VARCHAR(255),
+			error_file_id VARCHAR(255),
+			results_url TEXT,
+			next_check_at DATETIME,
+			poll_attempts INTEGER DEFAULT 0,
+			accounting_status VARCHAR(50) NOT NULL,
+			runner_id VARCHAR(255),
+			claimed_at DATETIME,
+			unpriceable_reason VARCHAR(255),
+			last_error TEXT,
+			aggregate_log_written_at DATETIME,
+			governance_reported_at DATETIME,
+			selected_key_id VARCHAR(255),
+			virtual_key_id VARCHAR(255),
+			budget_ids TEXT,
+			rate_limit_ids TEXT,
+			created_at DATETIME NOT NULL,
+			updated_at DATETIME NOT NULL
+		)`).Error)
+
+	now := time.Now().UTC()
+	require.NoError(t, db.Exec(`
+		INSERT INTO batch_jobs (id, provider, batch_id, accounting_status, selected_key_id, virtual_key_id, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		tables.BatchJobID("openai", "batch-legacy"), "openai", "batch-legacy",
+		tables.BatchJobAccountingStatusPending, "key-1", "vk-1", now, now).Error)
+
+	require.NoError(t, migrationAddBatchJobsAttributionColumns(ctx, db, logger))
+
+	mig := db.Migrator()
+	for _, column := range []string{"user_id", "team_id", "customer_id", "source_log_id"} {
+		assert.True(t, mig.HasColumn(&tables.TableBatchJob{}, column), "expected column %s", column)
+	}
+
+	var job tables.TableBatchJob
+	require.NoError(t, db.Where("id = ?", tables.BatchJobID("openai", "batch-legacy")).First(&job).Error)
+	assert.Equal(t, "key-1", job.SelectedKeyID, "pre-existing attribution must survive")
+	require.NotNil(t, job.VirtualKeyID)
+	assert.Equal(t, "vk-1", *job.VirtualKeyID)
+	assert.Nil(t, job.UserID, "a batch created before the column has no user to recover")
+	assert.Nil(t, job.SourceLogID)
+
+	// Migrations are re-run on every boot; the second pass must be a no-op.
+	require.NoError(t, migrationAddBatchJobsAttributionColumns(ctx, db, logger))
 }
