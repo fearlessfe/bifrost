@@ -136765,6 +136765,152 @@
           ]
         }
       ]
+    },
+    {
+      "name": "59. OpenAI Non-SSE Streaming Error Body Preview",
+      "description": "Pins the wire-visible diagnostic added when an OpenAI-compatible streaming path receives a successful JSON response instead of SSE. A stored response created without streaming has no event stream to replay; asking the Responses retrieve endpoint for stream=true reaches ResponsesRetrieveStream -> DrainNonSSEStreamReader -> ProcessAndSendError. Before the fix the client received only the generic non-SSE message. The regression case requires the bounded upstream JSON preview, including the stored response id, to survive in the streamed error. The final request deletes the stored response as cleanup.",
+      "item": [
+        {
+          "name": "openai/gpt-4o-mini create stored non-streaming response for non-SSE preview",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if ([401, 403, 429, 500, 502, 503, 504, 529].indexOf(pm.response.code) !== -1) { return; }",
+                  "pm.test('non-SSE preview setup: create succeeds', function () { pm.expect(pm.response.code, pm.response.text()).to.equal(200); });",
+                  "var j; try { j = pm.response.json(); } catch (e) { pm.expect.fail('setup response was not JSON: ' + (pm.response.text() || '').slice(0, 300)); return; }",
+                  "pm.test('non-SSE preview setup: stored response id captured', function () { pm.expect(j.id, pm.response.text()).to.match(/^resp_/); });",
+                  "if (j.id) { pm.collectionVariables.set('nonSSEPreviewRespId', j.id); }"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"openai/gpt-4o-mini\",\n  \"input\": \"Reply with exactly: non-sse-preview-ok\",\n  \"store\": true,\n  \"max_output_tokens\": 16\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/responses",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "responses"
+              ]
+            }
+          }
+        },
+        {
+          "name": "openai/gpt-4o-mini streaming retrieve surfaces non-SSE body preview",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if ([401, 403, 429, 500, 502, 503, 504, 529].indexOf(pm.response.code) !== -1) { return; }",
+                  "var body = pm.response.text() || '';",
+                  "var responseId = pm.collectionVariables.get('nonSSEPreviewRespId') || '';",
+                  "pm.test('non-SSE streaming error keeps the stable client-visible prefix', function () {",
+                  "  pm.expect(body, 'missing non-SSE error; body: ' + body.slice(0, 800)).to.include('provider returned non-SSE response for streaming request');",
+                  "});",
+                  "pm.test('non-SSE streaming error includes a bounded body preview', function () {",
+                  "  pm.expect(body, 'missing body preview; body: ' + body.slice(0, 800)).to.include('body preview:');",
+                  "  pm.expect(body, 'preview did not include stored response id ' + responseId + '; body: ' + body.slice(0, 800)).to.include(responseId);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/responses/{{nonSSEPreviewRespId}}?provider=openai&stream=true&starting_after=0",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "responses",
+                "{{nonSSEPreviewRespId}}"
+              ],
+              "query": [
+                {
+                  "key": "provider",
+                  "value": "openai"
+                },
+                {
+                  "key": "stream",
+                  "value": "true"
+                },
+                {
+                  "key": "starting_after",
+                  "value": "0"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "openai/gpt-4o-mini non-SSE body preview response cleanup",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if ([401, 403, 429, 500, 502, 503, 504, 529].indexOf(pm.response.code) !== -1) { return; }",
+                  "pm.test('non-SSE preview cleanup: response deleted', function () { pm.expect(pm.response.code, pm.response.text()).to.be.below(300); });",
+                  "pm.collectionVariables.unset('nonSSEPreviewRespId');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/responses/{{nonSSEPreviewRespId}}?provider=openai",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "responses",
+                "{{nonSSEPreviewRespId}}"
+              ],
+              "query": [
+                {
+                  "key": "provider",
+                  "value": "openai"
+                }
+              ]
+            }
+          }
+        }
+      ]
     }
   ]
 }

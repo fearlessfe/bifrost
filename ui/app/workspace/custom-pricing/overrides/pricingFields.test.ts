@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { PRICING_FIELDS, pricingFieldUnit } from "./pricingFields";
+import { discountPercentError, fieldLabelByKey, multiplierToDiscountPercent, PRICING_FIELDS, pricingFieldUnit } from "./pricingFields";
 
 describe("pricingFieldUnit", () => {
 	// Character-priced fields carry a "/ character" label, so rendering them
@@ -56,6 +56,7 @@ describe("pricingFieldUnit", () => {
 
 	it("classifies the geo multiplier as a multiplier, not currency", () => {
 		expect(pricingFieldUnit("inference_geo_us_multiplier")).toBe("multiplier");
+		expect(pricingFieldUnit("cost_multiplier")).toBe("multiplier");
 	});
 
 	it("classifies flat and per-unit costs as currency", () => {
@@ -90,5 +91,21 @@ describe("pricingFieldUnit", () => {
 		// Sanity: the split is real, not everything collapsing into one bucket.
 		expect(byUnit.token.length).toBeGreaterThan(20);
 		expect(byUnit.currency.length).toBeGreaterThan(20);
+	});
+});
+
+describe("contract discount fields", () => {
+	it("formats a stored multiplier as a percentage discount", () => {
+		expect(multiplierToDiscountPercent(0.8)).toBe("20");
+		expect(multiplierToDiscountPercent(0.675)).toBe("32.5");
+		expect(fieldLabelByKey.cost_multiplier).toBe("Contract cost multiplier");
+	});
+
+	it("accepts meaningful discounts and rejects empty or out-of-range values", () => {
+		expect(discountPercentError("20")).toBeUndefined();
+		expect(discountPercentError("")).toBe("Discount is required");
+		expect(discountPercentError("0")).toContain("greater than 0%");
+		expect(discountPercentError("100")).toContain("less than 100%");
+		expect(discountPercentError("nope")).toBe("Discount must be a number");
 	});
 });

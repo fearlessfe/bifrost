@@ -471,6 +471,37 @@ func TestPatchPricing_CostPerRequestZero(t *testing.T) {
 	assert.Equal(t, 0.0, *patched.CostPerRequest)
 }
 
+func TestOptionsValidateOverride_CostMultiplier(t *testing.T) {
+	require.NoError(t, (Options{CostMultiplier: bifrost.Ptr(0.8)}).ValidateOverride())
+
+	for _, multiplier := range []float64{-0.1, 0, 1.01} {
+		err := (Options{CostMultiplier: bifrost.Ptr(multiplier)}).ValidateOverride()
+		require.ErrorContains(t, err, "cost_multiplier must be greater than 0 and at most 1")
+	}
+
+	err := (Options{
+		CostMultiplier:    bifrost.Ptr(0.8),
+		InputCostPerToken: bifrost.Ptr(0.000001),
+	}).ValidateOverride()
+	require.ErrorContains(t, err, "cannot be combined with explicit pricing fields")
+}
+
+func TestPatchPricing_CarriesRuntimeCostMultiplier(t *testing.T) {
+	base := configstoreTables.TableModelPricing{
+		Model:              "gpt-4o",
+		Provider:           "openai",
+		Mode:               "chat",
+		InputCostPerToken:  bifrost.Ptr(0.0000025),
+		OutputCostPerToken: bifrost.Ptr(0.00001),
+	}
+
+	patched := patchPricing(base, Options{CostMultiplier: bifrost.Ptr(0.8)})
+	require.NotNil(t, patched.CostMultiplier)
+	assert.Equal(t, 0.8, *patched.CostMultiplier)
+	assert.Equal(t, 0.0000025, *patched.InputCostPerToken, "the base rate must remain unchanged")
+	assert.Equal(t, 0.00001, *patched.OutputCostPerToken, "the base rate must remain unchanged")
+}
+
 func TestPatchPricing_MegapixelImageTiers(t *testing.T) {
 	base := configstoreTables.TableModelPricing{
 		Model:    "prunaai/p-image-upscale",

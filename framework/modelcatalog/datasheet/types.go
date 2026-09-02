@@ -230,6 +230,11 @@ type Options struct {
 	// Costs - OCR
 	OCRCostPerPage        *float64 `json:"ocr_cost_per_page,omitempty"`
 	AnnotationCostPerPage *float64 `json:"annotation_cost_per_page,omitempty"`
+
+	// CostMultiplier applies a negotiated contract multiplier to the complete
+	// request cost after all usage and flat fees have been calculated. It is an
+	// override-only field and is not loaded from the public pricing datasheet.
+	CostMultiplier *float64 `json:"cost_multiplier,omitempty"`
 }
 
 // LookupScopes carries the runtime identifiers used to resolve scoped pricing
@@ -879,6 +884,9 @@ func IsEmptyModelCapabilities(ov *schemas.ModelCapabilities) bool {
 func convertTableOverride(override *configstoreTables.TablePricingOverride) (Override, error) {
 	var options Options
 	if err := sonic.Unmarshal([]byte(override.PricingPatchJSON), &options); err != nil {
+		return Override{}, err
+	}
+	if err := options.ValidateOverride(); err != nil {
 		return Override{}, err
 	}
 	return Override{

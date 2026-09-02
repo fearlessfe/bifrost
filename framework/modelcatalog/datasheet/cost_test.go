@@ -101,6 +101,59 @@ func derefF(f *float64) float64 {
 	return *f
 }
 
+func TestCalculateCost_ProviderContractMultiplier(t *testing.T) {
+	pricing := chatPricing(0.01, 0.02)
+	pricing.CostPerRequest = bifrost.Ptr(0.5)
+	s := testStoreWithPricing(map[string]configstoreTables.TableModelPricing{
+		makeKey("test-model", "test-provider", "chat"): pricing,
+	})
+	providerID := "test-provider"
+	require.NoError(t, s.SetOverrides([]configstoreTables.TablePricingOverride{{
+		ID:               "provider-contract-discount",
+		Name:             "Provider contract discount",
+		ScopeKind:        string(ScopeKindProvider),
+		ProviderID:       &providerID,
+		MatchType:        string(MatchTypeWildcard),
+		Pattern:          "*",
+		RequestTypes:     []schemas.RequestType{schemas.ChatCompletionRequest},
+		PricingPatchJSON: `{"cost_multiplier":0.8}`,
+	}}))
+
+	usage := &schemas.BifrostLLMUsage{PromptTokens: 100, CompletionTokens: 50, TotalTokens: 150}
+	breakdown := s.CalculateCostBreakdown(makeChatResponse("test-provider", "test-model", usage), nil)
+	require.NotNil(t, breakdown)
+	assert.InDelta(t, 1.2, breakdown.InputCost, 1e-12)
+	assert.InDelta(t, 0.8, breakdown.OutputCost, 1e-12)
+	assert.InDelta(t, 2.0, breakdown.TotalCost, 1e-12)
+	require.NotNil(t, breakdown.InputCostDetails)
+	assert.InDelta(t, 0.8, breakdown.InputCostDetails.TextCost, 1e-12)
+	assert.InDelta(t, 0.4, breakdown.InputCostDetails.RequestCost, 1e-12)
+	require.NotNil(t, breakdown.OutputCostDetails)
+	assert.InDelta(t, 0.8, breakdown.OutputCostDetails.TextCost, 1e-12)
+}
+
+func TestCalculateCost_ProviderContractMultiplierDoesNotRescaleProviderCost(t *testing.T) {
+	s := testStoreWithPricing(map[string]configstoreTables.TableModelPricing{
+		makeKey("test-model", "test-provider", "chat"): chatPricing(0.01, 0.02),
+	})
+	providerID := "test-provider"
+	require.NoError(t, s.SetOverrides([]configstoreTables.TablePricingOverride{{
+		ID:               "provider-contract-discount",
+		ScopeKind:        string(ScopeKindProvider),
+		ProviderID:       &providerID,
+		MatchType:        string(MatchTypeWildcard),
+		Pattern:          "*",
+		RequestTypes:     []schemas.RequestType{schemas.ChatCompletionRequest},
+		PricingPatchJSON: `{"cost_multiplier":0.8}`,
+	}}))
+
+	providerCost := &schemas.BifrostCost{InputCost: 1, OutputCost: 2, TotalCost: 3}
+	usage := &schemas.BifrostLLMUsage{Cost: providerCost}
+	breakdown := s.CalculateCostBreakdown(makeChatResponse("test-provider", "test-model", usage), nil)
+	assert.Same(t, providerCost, breakdown)
+	assert.Equal(t, 3.0, breakdown.TotalCost)
+}
+
 // The compute* functions return a per-category cost breakdown
 // (*schemas.BifrostCost). These *Total wrappers return just the aggregate cost
 // for the many unit tests that assert on the total; tests that care about the

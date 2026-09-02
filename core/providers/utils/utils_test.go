@@ -827,7 +827,7 @@ func TestDrainNonSSEStreamReader_SSEWithoutContentTypeStillReadable(t *testing.T
 	defer fasthttp.ReleaseResponse(resp)
 
 	body := []byte("event: response.created\n\ndata: {\"type\":\"response.completed\"}\n\n")
-	reader, drained := DrainNonSSEStreamReader(resp, bytes.NewReader(body))
+	reader, drained, _ := DrainNonSSEStreamReader(resp, bytes.NewReader(body))
 	if drained {
 		t.Fatal("expected SSE-looking response without content type to remain readable")
 	}
@@ -853,7 +853,7 @@ func TestDrainNonSSEStreamReader_GzipSSEWithoutContentTypeStillReadable(t *testi
 	decompressed, releaseGzip := DecompressStreamBody(resp)
 	defer releaseGzip()
 
-	reader, drained := DrainNonSSEStreamReader(resp, decompressed)
+	reader, drained, _ := DrainNonSSEStreamReader(resp, decompressed)
 	if drained {
 		t.Fatal("expected decompressed SSE-looking response without content type to remain readable")
 	}
@@ -872,12 +872,41 @@ func TestDrainNonSSEStreamReader_JSONWithoutContentTypeDrains(t *testing.T) {
 	defer fasthttp.ReleaseResponse(resp)
 
 	body := []byte(`{"error":"not stream"}`)
-	reader, drained := DrainNonSSEStreamReader(resp, bytes.NewReader(body))
+	reader, drained, preview := DrainNonSSEStreamReader(resp, bytes.NewReader(body))
 	if !drained {
 		t.Fatal("expected JSON response without content type to be drained")
 	}
 	if reader != nil {
 		t.Fatal("expected drained response to return nil reader")
+	}
+	if string(preview) != string(body) {
+		t.Fatalf("expected preview to capture drained body %q, got %q", string(body), string(preview))
+	}
+}
+
+func TestDrainNonSSEStreamReader_PreviewBounded(t *testing.T) {
+	resp := fasthttp.AcquireResponse()
+	defer fasthttp.ReleaseResponse(resp)
+
+	body := bytes.Repeat([]byte("x"), nonSSEPreviewSize*4)
+	_, drained, preview := DrainNonSSEStreamReader(resp, bytes.NewReader(body))
+	if !drained {
+		t.Fatal("expected non-SSE response to be drained")
+	}
+	if len(preview) != nonSSEPreviewSize {
+		t.Fatalf("expected preview capped at %d bytes, got %d", nonSSEPreviewSize, len(preview))
+	}
+}
+
+func TestNewNonSSEStreamError(t *testing.T) {
+	withoutPreview := NewNonSSEStreamError(nil)
+	if withoutPreview.Error() != "provider returned non-SSE response for streaming request" {
+		t.Fatalf("unexpected error without preview: %q", withoutPreview.Error())
+	}
+
+	withPreview := NewNonSSEStreamError([]byte(`{"error":"not stream"}`))
+	if !strings.Contains(withPreview.Error(), `{"error":"not stream"}`) {
+		t.Fatalf("expected error to include body preview, got %q", withPreview.Error())
 	}
 }
 
@@ -886,7 +915,7 @@ func TestDrainNonSSEStreamReader_UppercaseSSEPrefixDrains(t *testing.T) {
 	defer fasthttp.ReleaseResponse(resp)
 
 	body := []byte("DATA: {\"type\":\"response.completed\"}\n\n")
-	reader, drained := DrainNonSSEStreamReader(resp, bytes.NewReader(body))
+	reader, drained, _ := DrainNonSSEStreamReader(resp, bytes.NewReader(body))
 	if !drained {
 		t.Fatal("expected uppercase SSE-like prefix to be treated as non-SSE")
 	}
@@ -900,7 +929,7 @@ func TestDrainNonSSEStreamReader_ShortReadSSEPrefix(t *testing.T) {
 	defer fasthttp.ReleaseResponse(resp)
 
 	body := []byte("event: response.created\n\ndata: {}\n\n")
-	reader, drained := DrainNonSSEStreamReader(resp, &shortReadReader{data: body, chunkSize: 3})
+	reader, drained, _ := DrainNonSSEStreamReader(resp, &shortReadReader{data: body, chunkSize: 3})
 	if drained {
 		t.Fatal("expected SSE stream with short-read prefix to remain readable")
 	}
@@ -942,7 +971,7 @@ func TestDrainNonSSEStreamReader_TinyOpenSSEPrefixReturnsPromptly(t *testing.T) 
 				drained bool
 			}, 1)
 			go func() {
-				reader, drained := DrainNonSSEStreamReader(resp, pr)
+				reader, drained, _ := DrainNonSSEStreamReader(resp, pr)
 				result <- struct {
 					reader  io.Reader
 					drained bool
@@ -1014,7 +1043,7 @@ func TestDrainNonSSEStreamReader_FragmentedFieldPrefixReturnsPromptly(t *testing
 				drained bool
 			}, 1)
 			go func() {
-				reader, drained := DrainNonSSEStreamReader(resp, pr)
+				reader, drained, _ := DrainNonSSEStreamReader(resp, pr)
 				result <- struct {
 					reader  io.Reader
 					drained bool
@@ -1124,7 +1153,7 @@ func TestDrainNonSSEStreamReader_CodexNoContentType(t *testing.T) {
 	reader, releaseGzip := DecompressStreamBody(resp)
 	defer releaseGzip()
 
-	reader, drained := DrainNonSSEStreamReader(resp, reader)
+	reader, drained, _ := DrainNonSSEStreamReader(resp, reader)
 	if drained {
 		t.Fatal("SSE body without Content-Type was drained — reproduces the original Codex hang")
 	}

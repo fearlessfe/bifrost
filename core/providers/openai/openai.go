@@ -577,10 +577,10 @@ func HandleOpenAITextCompletionStreaming(
 
 		// Skip scanner for non-SSE responses — avoids bufio.Scanner buffer bloat
 		// on non-line-delimited data (e.g. provider returned JSON instead of SSE).
-		reader, drained := providerUtils.DrainNonSSEStreamReader(resp, reader)
+		reader, drained, preview := providerUtils.DrainNonSSEStreamReader(resp, reader)
 		if drained {
 			ctx.SetValue(schemas.BifrostContextKeyStreamEndIndicator, true)
-			providerUtils.ProcessAndSendError(ctx, postHookRunner, errors.New("provider returned non-SSE response for streaming request"), responseChan, logger, postHookSpanFinalizer)
+			providerUtils.ProcessAndSendError(ctx, postHookRunner, providerUtils.NewNonSSEStreamError(preview), responseChan, logger, postHookSpanFinalizer)
 			return
 		}
 
@@ -1194,10 +1194,10 @@ func HandleOpenAIChatCompletionStreaming(
 
 		// Skip scanner for non-SSE responses — avoids bufio.Scanner buffer bloat
 		// on non-line-delimited data (e.g. provider returned JSON instead of SSE).
-		reader, drained := providerUtils.DrainNonSSEStreamReader(resp, reader)
+		reader, drained, preview := providerUtils.DrainNonSSEStreamReader(resp, reader)
 		if drained {
 			ctx.SetValue(schemas.BifrostContextKeyStreamEndIndicator, true)
-			providerUtils.ProcessAndSendError(ctx, postHookRunner, errors.New("provider returned non-SSE response for streaming request"), responseChan, logger, postHookSpanFinalizer)
+			providerUtils.ProcessAndSendError(ctx, postHookRunner, providerUtils.NewNonSSEStreamError(preview), responseChan, logger, postHookSpanFinalizer)
 			return
 		}
 
@@ -1906,10 +1906,10 @@ func HandleOpenAIResponsesStreaming(
 
 		// Skip scanner for non-SSE responses — avoids bufio.Scanner buffer bloat
 		// on non-line-delimited data (e.g. provider returned JSON instead of SSE).
-		reader, drained := providerUtils.DrainNonSSEStreamReader(resp, reader)
+		reader, drained, preview := providerUtils.DrainNonSSEStreamReader(resp, reader)
 		if drained {
 			ctx.SetValue(schemas.BifrostContextKeyStreamEndIndicator, true)
-			providerUtils.ProcessAndSendError(ctx, postHookRunner, errors.New("provider returned non-SSE response for streaming request"), responseChan, logger, postHookSpanFinalizer)
+			providerUtils.ProcessAndSendError(ctx, postHookRunner, providerUtils.NewNonSSEStreamError(preview), responseChan, logger, postHookSpanFinalizer)
 			return
 		}
 
@@ -2511,10 +2511,10 @@ func HandleOpenAISpeechStreamRequest(
 
 		// Skip scanner for non-SSE responses — avoids bufio.Scanner buffer bloat
 		// on non-line-delimited data (e.g. provider returned JSON instead of SSE).
-		reader, drained := providerUtils.DrainNonSSEStreamReader(resp, reader)
+		reader, drained, preview := providerUtils.DrainNonSSEStreamReader(resp, reader)
 		if drained {
 			ctx.SetValue(schemas.BifrostContextKeyStreamEndIndicator, true)
-			providerUtils.ProcessAndSendError(ctx, postHookRunner, errors.New("provider returned non-SSE response for streaming request"), responseChan, logger, postHookSpanFinalizer)
+			providerUtils.ProcessAndSendError(ctx, postHookRunner, providerUtils.NewNonSSEStreamError(preview), responseChan, logger, postHookSpanFinalizer)
 			return
 		}
 
@@ -3021,10 +3021,10 @@ func HandleOpenAITranscriptionStreamRequest(
 
 		// Skip scanner for non-SSE responses — avoids bufio.Scanner buffer bloat
 		// on non-line-delimited data (e.g. provider returned JSON instead of SSE).
-		reader, drained := providerUtils.DrainNonSSEStreamReader(resp, reader)
+		reader, drained, preview := providerUtils.DrainNonSSEStreamReader(resp, reader)
 		if drained {
 			ctx.SetValue(schemas.BifrostContextKeyStreamEndIndicator, true)
-			providerUtils.ProcessAndSendError(ctx, postHookRunner, errors.New("provider returned non-SSE response for streaming request"), responseChan, logger, postHookSpanFinalizer)
+			providerUtils.ProcessAndSendError(ctx, postHookRunner, providerUtils.NewNonSSEStreamError(preview), responseChan, logger, postHookSpanFinalizer)
 			return
 		}
 
@@ -3472,10 +3472,10 @@ func HandleOpenAIImageGenerationStreaming(
 
 		// Skip scanner for non-SSE responses — avoids bufio.Scanner buffer bloat
 		// on non-line-delimited data (e.g. provider returned JSON instead of SSE).
-		reader, drained := providerUtils.DrainNonSSEStreamReader(resp, reader)
+		reader, drained, preview := providerUtils.DrainNonSSEStreamReader(resp, reader)
 		if drained {
 			ctx.SetValue(schemas.BifrostContextKeyStreamEndIndicator, true)
-			providerUtils.ProcessAndSendError(ctx, postHookRunner, errors.New("provider returned non-SSE response for streaming request"), responseChan, logger, postHookSpanFinalizer)
+			providerUtils.ProcessAndSendError(ctx, postHookRunner, providerUtils.NewNonSSEStreamError(preview), responseChan, logger, postHookSpanFinalizer)
 			return
 		}
 
@@ -5078,10 +5078,10 @@ func HandleOpenAIImageEditStreamRequest(
 
 		// Skip scanner for non-SSE responses — avoids bufio.Scanner buffer bloat
 		// on non-line-delimited data (e.g. provider returned JSON instead of SSE).
-		reader, drained := providerUtils.DrainNonSSEStreamReader(resp, reader)
+		reader, drained, preview := providerUtils.DrainNonSSEStreamReader(resp, reader)
 		if drained {
 			ctx.SetValue(schemas.BifrostContextKeyStreamEndIndicator, true)
-			providerUtils.ProcessAndSendError(ctx, postHookRunner, errors.New("provider returned non-SSE response for streaming request"), responseChan, logger, postHookSpanFinalizer)
+			providerUtils.ProcessAndSendError(ctx, postHookRunner, providerUtils.NewNonSSEStreamError(preview), responseChan, logger, postHookSpanFinalizer)
 			return
 		}
 

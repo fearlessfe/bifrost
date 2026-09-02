@@ -12,6 +12,9 @@ import (
 const (
 	sseInitialBufSize = 8 * 1024        // 8KB — sufficient for >99.9% of SSE lines
 	sseMaxBufSize     = 10 * 1024 * 1024 // 10MB — allow large tokens (tool calls, audio)
+	// nonSSEPreviewSize bounds how much of a non-SSE streaming response body is
+	// captured into the error for diagnostics (the rest is still drained).
+	nonSSEPreviewSize = 512
 )
 
 // SSEDataReader reads SSE data-only events (Format A: OpenAI, Gemini, Cohere, etc.).

@@ -275,10 +275,10 @@ func (provider *OpenAIProvider) ResponsesRetrieveStream(ctx *schemas.BifrostCont
 		stopCancellation := providerUtils.SetupStreamCancellation(ctx, resp.BodyStream(), provider.logger)
 		defer stopCancellation()
 
-		reader, drained := providerUtils.DrainNonSSEStreamReader(resp, reader)
+		reader, drained, preview := providerUtils.DrainNonSSEStreamReader(resp, reader)
 		if drained {
 			ctx.SetValue(schemas.BifrostContextKeyStreamEndIndicator, true)
-			providerUtils.ProcessAndSendError(ctx, postHookRunner, errors.New("provider returned non-SSE response for streaming request"), responseChan, provider.logger, postHookSpanFinalizer)
+			providerUtils.ProcessAndSendError(ctx, postHookRunner, providerUtils.NewNonSSEStreamError(preview), responseChan, provider.logger, postHookSpanFinalizer)
 			return
 		}
 

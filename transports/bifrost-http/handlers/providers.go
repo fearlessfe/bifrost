@@ -887,6 +887,14 @@ func changedCost(base, patched *float64) *float64 {
 	return patched
 }
 
+func multipliedCost(base, multiplier *float64) *float64 {
+	if base == nil || multiplier == nil {
+		return nil
+	}
+	value := *base * *multiplier
+	return &value
+}
+
 // buildOverriddenPricing projects the four displayed costs through the applied
 // patch. base may be nil (an override priced a model absent from the catalog).
 // Returns nil when the patch changes none of the displayed fields.
@@ -898,11 +906,21 @@ func buildOverriddenPricing(base *modelcatalog.PricingEntry, patch *modelcatalog
 	if base != nil {
 		baseOptions = base.Options
 	}
+	inputCostPerToken := patch.InputCostPerToken
+	outputCostPerToken := patch.OutputCostPerToken
+	cacheWriteCost := patch.CacheCreationInputTokenCost
+	cacheReadCost := patch.CacheReadInputTokenCost
+	if patch.CostMultiplier != nil {
+		inputCostPerToken = multipliedCost(baseOptions.InputCostPerToken, patch.CostMultiplier)
+		outputCostPerToken = multipliedCost(baseOptions.OutputCostPerToken, patch.CostMultiplier)
+		cacheWriteCost = multipliedCost(baseOptions.CacheCreationInputTokenCost, patch.CostMultiplier)
+		cacheReadCost = multipliedCost(baseOptions.CacheReadInputTokenCost, patch.CostMultiplier)
+	}
 	overridden := ModelOverriddenPricing{
-		InputCostPerToken:  changedCost(baseOptions.InputCostPerToken, patch.InputCostPerToken),
-		OutputCostPerToken: changedCost(baseOptions.OutputCostPerToken, patch.OutputCostPerToken),
-		CacheWriteCost:     changedCost(baseOptions.CacheCreationInputTokenCost, patch.CacheCreationInputTokenCost),
-		CacheReadCost:      changedCost(baseOptions.CacheReadInputTokenCost, patch.CacheReadInputTokenCost),
+		InputCostPerToken:  changedCost(baseOptions.InputCostPerToken, inputCostPerToken),
+		OutputCostPerToken: changedCost(baseOptions.OutputCostPerToken, outputCostPerToken),
+		CacheWriteCost:     changedCost(baseOptions.CacheCreationInputTokenCost, cacheWriteCost),
+		CacheReadCost:      changedCost(baseOptions.CacheReadInputTokenCost, cacheReadCost),
 	}
 	if overridden.InputCostPerToken == nil && overridden.OutputCostPerToken == nil &&
 		overridden.CacheWriteCost == nil && overridden.CacheReadCost == nil {

@@ -286,7 +286,7 @@ Pricing overrides are defined under `governance.pricing_overrides`. Each entry r
 | `match_type` | string | Yes | `exact` or `wildcard` |
 | `pattern` | string | Yes | Model name or wildcard prefix ending with `*` |
 | `request_types` | array | Yes | Request types this override applies to. At least one value required. |
-| `pricing_patch` | string | No | JSON-encoded pricing fields to override |
+| `pricing_patch` | string | No | JSON-encoded pricing fields to override, or a standalone `cost_multiplier` in `(0, 1]` |
 | `config_hash` | string | No | Auto-managed. Do not set manually |
 
 </Tab>
@@ -297,6 +297,10 @@ Pricing overrides are defined under `governance.pricing_overrides`. Each entry r
 ## Pricing fields reference
 
 Any field you set (including `0`) is applied as an override; omitted fields are left unchanged. Cost fields are per unit in USD, except `cost_per_request`, which is a flat fee applied once per billed request; multiplier fields are dimensionless.
+
+`cost_multiplier` applies a negotiated contract multiplier to the final catalog-computed request cost. For example, `0.8` bills at 80% of the base cost. It cannot be combined with explicit pricing fields in the same override.
+
+Provider-reported authoritative costs are used as returned and are not multiplied again. This prevents costs already computed upstream or attached by an earlier streaming stage from being discounted twice.
 
 ### Token costs
 
@@ -439,6 +443,23 @@ least 1536) is billed at the 1536×1024 rate, which is checked first.
 ---
 
 ## Examples
+
+### Provider contract discount
+
+Apply a 20% contract discount to the selected OpenAI request types:
+
+```json
+{
+  "id": "openai-contract-discount",
+  "name": "OpenAI contract discount",
+  "scope_kind": "provider",
+  "provider_id": "openai",
+  "match_type": "wildcard",
+  "pattern": "*",
+  "request_types": ["chat_completion", "text_completion", "responses", "embedding", "image_generation"],
+  "pricing_patch": "{\"cost_multiplier\":0.8}"
+}
+```
 
 ### Flat rate for all Anthropic models
 

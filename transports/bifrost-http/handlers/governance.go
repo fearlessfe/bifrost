@@ -4529,6 +4529,7 @@ func (h *GovernanceHandler) createPricingOverride(ctx *fasthttp.RequestCtx) {
 		MatchType:     req.MatchType,
 		Pattern:       req.Pattern,
 		RequestTypes:  req.RequestTypes,
+		Options:       req.Patch,
 	}
 	if err := shape.IsValid(); err != nil {
 		SendError(ctx, fasthttp.StatusBadRequest, err.Error())
@@ -4635,6 +4636,12 @@ func (h *GovernanceHandler) updatePricingOverride(ctx *fasthttp.RequestCtx) {
 	}
 	if req.RequestTypes != nil {
 		merged.RequestTypes = req.RequestTypes
+	}
+	if req.Patch != nil {
+		if err := req.Patch.ValidateOverride(); err != nil {
+			SendError(ctx, fasthttp.StatusBadRequest, err.Error())
+			return
+		}
 	}
 
 	if err := merged.IsValid(); err != nil {

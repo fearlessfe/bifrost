@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/bytedance/sonic"
+	bifrost "github.com/maximhq/bifrost/core"
 	"github.com/maximhq/bifrost/core/schemas"
 	"github.com/maximhq/bifrost/framework/configstore"
 	configstoreTables "github.com/maximhq/bifrost/framework/configstore/tables"
@@ -17,6 +18,8 @@ import (
 	"github.com/maximhq/bifrost/framework/modelcatalog/datasheet"
 	governanceplugin "github.com/maximhq/bifrost/plugins/governance"
 	"github.com/maximhq/bifrost/transports/bifrost-http/lib"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 )
 
@@ -1017,6 +1020,23 @@ func TestListModelDetails_ResolvesCatalogPricing(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestBuildOverriddenPricing_AppliesContractMultiplier(t *testing.T) {
+	base := &modelcatalog.PricingEntry{Options: modelcatalog.PricingOptions{
+		InputCostPerToken:           bifrost.Ptr(0.0000025),
+		OutputCostPerToken:          bifrost.Ptr(0.00001),
+		CacheCreationInputTokenCost: bifrost.Ptr(0.000003),
+		CacheReadInputTokenCost:     bifrost.Ptr(0.00000025),
+	}}
+	patch := &modelcatalog.PricingOptions{CostMultiplier: bifrost.Ptr(0.8)}
+
+	overridden := buildOverriddenPricing(base, patch)
+	require.NotNil(t, overridden)
+	assert.InDelta(t, 0.000002, *overridden.InputCostPerToken, 1e-15)
+	assert.InDelta(t, 0.000008, *overridden.OutputCostPerToken, 1e-15)
+	assert.InDelta(t, 0.0000024, *overridden.CacheWriteCost, 1e-15)
+	assert.InDelta(t, 0.0000002, *overridden.CacheReadCost, 1e-15)
 }
 
 // gpt4oPricingJSON is the base catalog fixture shared by the override tests.

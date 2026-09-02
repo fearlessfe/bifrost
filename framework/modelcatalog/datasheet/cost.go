@@ -269,11 +269,12 @@ func (s *Store) CalculateBatchCostDetailsForUsage(usage *schemas.BifrostLLMUsage
 		if pricing.CostPerRequest != nil {
 			cost += *pricing.CostPerRequest
 		}
+		cost *= contractCostMultiplier(pricing)
 		return BatchCostDetails{
 			Cost:                      cost,
 			Priced:                    true,
-			InputCostPerTokenBatches:  inputRate,
-			OutputCostPerTokenBatches: outputRate,
+			InputCostPerTokenBatches:  multiplyRate(inputRate, contractCostMultiplier(pricing)),
+			OutputCostPerTokenBatches: multiplyRate(outputRate, contractCostMultiplier(pricing)),
 		}
 	default:
 		return BatchCostDetails{}
@@ -286,6 +287,14 @@ func cloneFloat64Pointer(value *float64) *float64 {
 	}
 	clone := *value
 	return &clone
+}
+
+func multiplyRate(rate *float64, multiplier float64) *float64 {
+	if rate == nil {
+		return nil
+	}
+	value := *rate * multiplier
+	return &value
 }
 
 // calculateCostWithCache handles cost calculation when semantic cache debug info is present.
@@ -360,7 +369,7 @@ func (s *Store) computeCacheEmbeddingCost(cacheDebug *schemas.BifrostCacheDebug,
 	if pricing.CostPerRequest != nil {
 		cost += *pricing.CostPerRequest
 	}
-	return cost
+	return cost * contractCostMultiplier(pricing)
 }
 
 // CalculateCacheEmbeddingCost computes the semantic-cache embedding lookup cost.
@@ -566,7 +575,62 @@ func (s *Store) computeCostFromInput(input costInput, routingInfo schemas.Routin
 		cost.InputCostDetails.RequestCost += *pricing.CostPerRequest
 		cost.TotalCost += *pricing.CostPerRequest
 	}
-	return cost
+	return applyContractCostMultiplier(cost, pricing.CostMultiplier)
+}
+
+// contractCostMultiplier returns the configured contract multiplier or the
+// neutral multiplier for ordinary catalog pricing.
+func contractCostMultiplier(pricing *configstoreTables.TableModelPricing) float64 {
+	if pricing == nil || pricing.CostMultiplier == nil {
+		return 1
+	}
+	return *pricing.CostMultiplier
+}
+
+// applyContractCostMultiplier returns a deep copy of cost with every monetary
+// component scaled. It runs before guardrail and semantic-cache sidecars are
+// merged, so each internal call resolves and applies its own provider rule.
+// Provider-supplied costs bypass this helper: they are already authoritative
+// and may have passed through the pricing engine earlier in a streaming path.
+func applyContractCostMultiplier(cost *schemas.BifrostCost, multiplier *float64) *schemas.BifrostCost {
+	if cost == nil || multiplier == nil || *multiplier == 1 {
+		return cost
+	}
+
+	scaled := *cost
+	scaled.InputCost *= *multiplier
+	scaled.OutputCost *= *multiplier
+	scaled.AdditionalCost *= *multiplier
+	scaled.TotalCost *= *multiplier
+
+	if cost.InputCostDetails != nil {
+		details := *cost.InputCostDetails
+		details.TextCost *= *multiplier
+		details.AudioCost *= *multiplier
+		details.ImageCost *= *multiplier
+		details.CachedReadCost *= *multiplier
+		details.CachedWriteCost *= *multiplier
+		details.RequestCost *= *multiplier
+		scaled.InputCostDetails = &details
+	}
+	if cost.OutputCostDetails != nil {
+		details := *cost.OutputCostDetails
+		details.TextCost *= *multiplier
+		details.AudioCost *= *multiplier
+		details.ImageCost *= *multiplier
+		details.ReasoningCost *= *multiplier
+		details.CitationCost *= *multiplier
+		details.SearchQueriesCost *= *multiplier
+		scaled.OutputCostDetails = &details
+	}
+	if cost.AdditionalCostDetails != nil {
+		details := *cost.AdditionalCostDetails
+		details.GuardrailCost *= *multiplier
+		details.MCPCost *= *multiplier
+		details.SemanticCacheCost *= *multiplier
+		scaled.AdditionalCostDetails = &details
+	}
+	return &scaled
 }
 
 // ---------------------------------------------------------------------------

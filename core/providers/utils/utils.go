@@ -1509,22 +1509,38 @@ func DecompressStreamBody(resp *fasthttp.Response) (io.Reader, func()) {
 // Some OpenAI-compatible backends return valid SSE frames without Content-Type:
 // text/event-stream. In that case, peek at the first field prefix without consuming
 // it so the downstream SSE parser sees the full stream.
-func DrainNonSSEStreamReader(resp *fasthttp.Response, reader io.Reader) (io.Reader, bool) {
+//
+// When the body is not SSE, it is drained so the connection can be reused, and a
+// bounded preview (nonSSEPreviewSize bytes) of the drained payload is returned so
+// callers can surface what the upstream actually sent instead of an opaque error.
+func DrainNonSSEStreamReader(resp *fasthttp.Response, reader io.Reader) (io.Reader, bool, []byte) {
 	ct := strings.ToLower(string(resp.Header.ContentType()))
 	if strings.Contains(ct, "text/event-stream") {
-		return reader, false
+		return reader, false, nil
 	}
 	if reader == nil {
-		return nil, true
+		return nil, true, nil
 	}
 
 	br := bufio.NewReaderSize(reader, sseInitialBufSize)
 	if hasSSEPrefix(br) {
-		return br, false
+		return br, false, nil
 	}
 
+	var preview bytes.Buffer
+	_, _ = io.Copy(&preview, io.LimitReader(br, nonSSEPreviewSize))
 	_, _ = io.Copy(io.Discard, br)
-	return nil, true
+	return nil, true, preview.Bytes()
+}
+
+// NewNonSSEStreamError builds the error for a streaming request whose upstream
+// response was not an SSE stream, including a bounded preview of the actual body
+// (often a plain JSON completion or an in-band error) when one was captured.
+func NewNonSSEStreamError(preview []byte) error {
+	if len(preview) == 0 {
+		return errors.New("provider returned non-SSE response for streaming request")
+	}
+	return fmt.Errorf("provider returned non-SSE response for streaming request (body preview: %s)", string(preview))
 }
 
 func hasSSEPrefix(reader *bufio.Reader) bool {

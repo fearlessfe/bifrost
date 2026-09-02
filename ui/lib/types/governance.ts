@@ -479,6 +479,8 @@ export type PricingOverrideScopeKind =
 export type PricingOverrideMatchType = "exact" | "wildcard";
 
 export interface PricingOverridePatch {
+	// Contract pricing. 0.8 means the final catalog-computed request cost is billed at 80%.
+	cost_multiplier?: number;
 	// Token
 	input_cost_per_token?: number;
 	output_cost_per_token?: number;

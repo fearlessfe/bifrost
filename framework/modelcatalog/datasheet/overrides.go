@@ -3,6 +3,7 @@ package datasheet
 import (
 	"context"
 	"fmt"
+	"math"
 	"reflect"
 	"slices"
 	"sort"
@@ -21,7 +22,31 @@ func (override *Override) IsValid() error {
 	if err := override.validatePattern(); err != nil {
 		return err
 	}
-	return override.validateRequestTypes()
+	if err := override.validateRequestTypes(); err != nil {
+		return err
+	}
+	return override.Options.ValidateOverride()
+}
+
+// ValidateOverride validates pricing fields whose meaning is specific to
+// scoped overrides. A contract multiplier and explicit unit prices are
+// intentionally mutually exclusive so one rule has one unambiguous pricing
+// mode.
+func (options Options) ValidateOverride() error {
+	if options.CostMultiplier == nil {
+		return nil
+	}
+	multiplier := *options.CostMultiplier
+	if math.IsNaN(multiplier) || math.IsInf(multiplier, 0) || multiplier <= 0 || multiplier > 1 {
+		return fmt.Errorf("cost_multiplier must be greater than 0 and at most 1")
+	}
+
+	explicitPrices := options
+	explicitPrices.CostMultiplier = nil
+	if !reflect.DeepEqual(explicitPrices, Options{}) {
+		return fmt.Errorf("cost_multiplier cannot be combined with explicit pricing fields")
+	}
+	return nil
 }
 
 func (override *Override) validateScopeKind() error {
@@ -577,6 +602,7 @@ func patchPricing(pricing configstoreTables.TableModelPricing, override Options)
 		{dst: &patched.OutputCostPerImageAutoQuality, src: override.OutputCostPerImageAutoQuality},
 		{dst: &patched.OCRCostPerPage, src: override.OCRCostPerPage},
 		{dst: &patched.AnnotationCostPerPage, src: override.AnnotationCostPerPage},
+		{dst: &patched.CostMultiplier, src: override.CostMultiplier},
 	} {
 		if field.src != nil {
 			*field.dst = field.src

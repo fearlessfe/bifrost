@@ -146,6 +146,12 @@ type TableModelPricing struct {
 	OCRCostPerPage        *float64 `gorm:"default:null;column:ocr_cost_per_page" json:"ocr_cost_per_page,omitempty"`
 	AnnotationCostPerPage *float64 `gorm:"default:null;column:annotation_cost_per_page" json:"annotation_cost_per_page,omitempty"`
 
+	// CostMultiplier is runtime-only metadata copied from the winning scoped
+	// pricing override. Contract discounts live in PricingPatchJSON, so this
+	// field must never create or update a model-pricing database column or leak
+	// through APIs that serialize model-pricing rows.
+	CostMultiplier *float64 `gorm:"-" json:"-"`
+
 	// AdditionalAttributes holds editorial per-model metadata (e.g. description,
 	// tags). Persisted as a JSON string in the additional_attributes column and
 	// surfaced as a typed map via BeforeSave/AfterFind. This column is

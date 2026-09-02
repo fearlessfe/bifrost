@@ -153,3 +153,63 @@ func TestUpdatePricingOverride_ReplacesFullBody(t *testing.T) {
 	assert.Nil(t, patch.OutputCostPerToken)
 	assert.Empty(t, stored.ConfigHash)
 }
+
+func TestCreatePricingOverride_ProviderContractMultiplier(t *testing.T) {
+	SetLogger(&mockLogger{})
+	store := setupPricingOverrideHandlerStore(t)
+	handler := &GovernanceHandler{
+		configStore:       store,
+		governanceManager: pricingOverrideTestGovernanceManager{},
+	}
+
+	ctx := newTestRequestCtx(`{
+		"name":"OpenAI contract discount",
+		"scope_kind":"provider",
+		"provider_id":"openai",
+		"match_type":"wildcard",
+		"pattern":"*",
+		"request_types":["chat_completion","responses"],
+		"patch":{"cost_multiplier":0.8}
+	}`)
+
+	handler.createPricingOverride(ctx)
+	require.Equal(t, fasthttp.StatusCreated, ctx.Response.StatusCode(), string(ctx.Response.Body()))
+
+	overrides, err := store.GetPricingOverrides(context.Background(), configstore.PricingOverrideFilters{})
+	require.NoError(t, err)
+	require.Len(t, overrides, 1)
+	assert.Equal(t, "openai", *overrides[0].ProviderID)
+	assert.Equal(t, "*", overrides[0].Pattern)
+
+	var patch modelcatalog.PricingOptions
+	require.NoError(t, json.Unmarshal([]byte(overrides[0].PricingPatchJSON), &patch))
+	require.NotNil(t, patch.CostMultiplier)
+	assert.Equal(t, 0.8, *patch.CostMultiplier)
+}
+
+func TestCreatePricingOverride_RejectsMixedContractMultiplier(t *testing.T) {
+	SetLogger(&mockLogger{})
+	store := setupPricingOverrideHandlerStore(t)
+	handler := &GovernanceHandler{
+		configStore:       store,
+		governanceManager: pricingOverrideTestGovernanceManager{},
+	}
+
+	ctx := newTestRequestCtx(`{
+		"name":"Ambiguous contract pricing",
+		"scope_kind":"provider",
+		"provider_id":"openai",
+		"match_type":"wildcard",
+		"pattern":"*",
+		"request_types":["chat_completion"],
+		"patch":{"cost_multiplier":0.8,"input_cost_per_token":0.000001}
+	}`)
+
+	handler.createPricingOverride(ctx)
+	assert.Equal(t, fasthttp.StatusBadRequest, ctx.Response.StatusCode())
+	assert.Contains(t, string(ctx.Response.Body()), "cost_multiplier cannot be combined with explicit pricing fields")
+
+	overrides, err := store.GetPricingOverrides(context.Background(), configstore.PricingOverrideFilters{})
+	require.NoError(t, err)
+	assert.Empty(t, overrides)
+}

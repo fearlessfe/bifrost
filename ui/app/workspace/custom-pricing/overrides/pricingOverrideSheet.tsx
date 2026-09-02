@@ -42,10 +42,19 @@ export {
 	REQUEST_TYPE_OPTIONS,
 } from "./pricingFields";
 export type { FieldErrors, PricingFieldKey } from "./pricingFields";
-import { fieldLabelByKey, patchKeys, PRICING_FIELDS, REQUEST_TYPE_GROUPS, REQUEST_TYPE_OPTIONS } from "./pricingFields";
+import {
+	discountPercentError,
+	fieldLabelByKey,
+	multiplierToDiscountPercent,
+	patchKeys,
+	PRICING_FIELDS,
+	REQUEST_TYPE_GROUPS,
+	REQUEST_TYPE_OPTIONS,
+} from "./pricingFields";
 import type { FieldErrors, PricingFieldKey } from "./pricingFields";
 
 type ScopeRoot = "global" | "virtual_key" | "user";
+type PricingMode = "fixed" | "discount";
 
 export interface FormState {
 	name: string;
@@ -57,6 +66,8 @@ export interface FormState {
 	matchType: PricingOverrideMatchType;
 	pattern: string;
 	requestTypes: RequestType[];
+	pricingMode: PricingMode;
+	discountPercent: string;
 	pricingValues: Partial<Record<PricingFieldKey, string>>;
 }
 
@@ -70,6 +81,8 @@ export const defaultFormState: FormState = {
 	matchType: "exact",
 	pattern: "",
 	requestTypes: [],
+	pricingMode: "fixed",
+	discountPercent: "",
 	pricingValues: {},
 };
 
@@ -90,6 +103,16 @@ export function patternError(matchType: PricingOverrideMatchType, pattern: strin
 export function buildPatchFromForm(form: FormState): { patch: PricingOverridePatch; errors: FieldErrors } {
 	const errors: FieldErrors = {};
 	const patch: PricingOverridePatch = {};
+	if (form.pricingMode === "discount") {
+		const error = discountPercentError(form.discountPercent);
+		if (error) {
+			errors.patch = error;
+			return { patch, errors };
+		}
+		const percent = Number(form.discountPercent);
+		patch.cost_multiplier = Number((1 - percent / 100).toFixed(12));
+		return { patch, errors };
+	}
 
 	for (const key of patchKeys) {
 		const raw = form.pricingValues[key];
@@ -121,6 +144,8 @@ function toFormState(override: PricingOverride): FormState {
 		const val = parsedPatch[key];
 		if (typeof val === "number") values[key] = String(val);
 	}
+	const costMultiplier = parsedPatch.cost_multiplier;
+	const hasDiscount = typeof costMultiplier === "number" && costMultiplier > 0 && costMultiplier <= 1;
 	const scopeKind = resolveScopeKind(override);
 
 	const scopeRoot: ScopeRoot =
@@ -140,6 +165,8 @@ function toFormState(override: PricingOverride): FormState {
 		matchType: override.match_type,
 		pattern: override.pattern,
 		requestTypes: override.request_types ?? [],
+		pricingMode: hasDiscount ? "discount" : "fixed",
+		discountPercent: hasDiscount ? multiplierToDiscountPercent(costMultiplier) : "",
 		pricingValues: values,
 	};
 }
@@ -195,6 +222,9 @@ export function patchSummary(override: PricingOverride): string {
 		if (override.pricing_patch) parsed = JSON.parse(override.pricing_patch);
 	} catch {
 		// ignore
+	}
+	if (typeof parsed.cost_multiplier === "number") {
+		return `${multiplierToDiscountPercent(parsed.cost_multiplier)}% discount`;
 	}
 	const keys = Object.keys(parsed) as PricingFieldKey[];
 	if (keys.length === 0) return "None";
@@ -302,6 +332,8 @@ export default function PricingOverrideSheet({ open, onOpenChange, editingOverri
 	const userID = watch("userID");
 	const matchType = watch("matchType");
 	const requestTypes = watch("requestTypes");
+	const pricingMode = watch("pricingMode");
+	const discountPercent = watch("discountPercent");
 	const pricingValues = watch("pricingValues");
 
 	const shouldLockScope = useMemo(() => !editingOverride && isCompleteScopeLock(scopeLock), [editingOverride, scopeLock]);
@@ -405,6 +437,7 @@ export default function PricingOverrideSheet({ open, onOpenChange, editingOverri
 
 	const pricingFieldErrors = useMemo<FieldErrors>(() => {
 		const errs: FieldErrors = {};
+		if (pricingMode === "discount") return errs;
 		for (const key of patchKeys) {
 			const raw = pricingValues[key];
 			if (!raw || raw.trim() === "") continue;
@@ -413,7 +446,7 @@ export default function PricingOverrideSheet({ open, onOpenChange, editingOverri
 			else if (parsed < 0) errs[key] = "Must be >= 0";
 		}
 		return errs;
-	}, [pricingValues]);
+	}, [pricingMode, pricingValues]);
 
 	useEffect(() => {
 		if (!jsonEditingRef.current) {
@@ -422,7 +455,7 @@ export default function PricingOverrideSheet({ open, onOpenChange, editingOverri
 			setJSONPatch(json);
 			setJSONError(undefined);
 		}
-	}, [pricingValues, getValues]);
+	}, [pricingMode, discountPercent, pricingValues, getValues]);
 
 	const handleJSONChange = useCallback(
 		(value: string) => {
@@ -432,6 +465,7 @@ export default function PricingOverrideSheet({ open, onOpenChange, editingOverri
 			if (!trimmed) {
 				setJSONError(undefined);
 				setValue("pricingValues", {});
+				setValue("discountPercent", "");
 				return;
 			}
 			try {
@@ -440,8 +474,26 @@ export default function PricingOverrideSheet({ open, onOpenChange, editingOverri
 					setJSONError("Patch must be a JSON object");
 					return;
 				}
+				const entries = Object.entries(parsed);
+				if (Object.hasOwn(parsed, "cost_multiplier")) {
+					if (entries.length !== 1) {
+						setJSONError("cost_multiplier cannot be combined with explicit pricing fields");
+						return;
+					}
+					const multiplier = parsed.cost_multiplier;
+					if (typeof multiplier !== "number" || !Number.isFinite(multiplier) || multiplier <= 0 || multiplier > 1) {
+						setJSONError("cost_multiplier must be greater than 0 and at most 1");
+						return;
+					}
+					setJSONError(undefined);
+					setValue("pricingMode", "discount");
+					setValue("discountPercent", multiplierToDiscountPercent(multiplier));
+					setValue("pricingValues", {});
+					return;
+				}
+
 				const newPricingValues: Partial<Record<PricingFieldKey, string>> = {};
-				for (const [key, val] of Object.entries(parsed)) {
+				for (const [key, val] of entries) {
 					if (!patchKeys.includes(key as PricingFieldKey)) {
 						setJSONError(`Unknown field: ${key}`);
 						return;
@@ -453,6 +505,8 @@ export default function PricingOverrideSheet({ open, onOpenChange, editingOverri
 					newPricingValues[key as PricingFieldKey] = String(val);
 				}
 				setJSONError(undefined);
+				setValue("pricingMode", "fixed");
+				setValue("discountPercent", "");
 				setValue("pricingValues", newPricingValues);
 			} catch {
 				setJSONError("Invalid JSON");
@@ -504,11 +558,14 @@ export default function PricingOverrideSheet({ open, onOpenChange, editingOverri
 			hasErrors = true;
 		}
 
-		if (Object.keys(pricingFieldErrors).length > 0) {
+		const { patch, errors: patchErrors } = buildPatchFromForm(data);
+		if (data.pricingMode === "discount" && patchErrors.patch) {
+			setError("discountPercent", { message: patchErrors.patch });
+			hasErrors = true;
+		} else if (Object.keys(pricingFieldErrors).length > 0) {
 			setError("pricingValues", { message: "Fix the pricing field errors above" });
 			hasErrors = true;
-		} else {
-			const { patch } = buildPatchFromForm(data);
+		} else if (data.pricingMode === "fixed") {
 			if (Object.keys(patch).length === 0) {
 				setError("pricingValues", { message: "At least one pricing field must be overridden" });
 				hasErrors = true;
@@ -517,7 +574,6 @@ export default function PricingOverrideSheet({ open, onOpenChange, editingOverri
 
 		if (hasErrors || jsonError) return;
 
-		const { patch } = buildPatchFromForm(data);
 		let scopedUserID: string | undefined;
 		let scopedVirtualKeyID: string | undefined;
 		let scopedProviderID: string | undefined;
@@ -951,29 +1007,102 @@ export default function PricingOverrideSheet({ open, onOpenChange, editingOverri
 
 							<FormField
 								control={control}
-								name="pricingValues"
+								name="pricingMode"
 								render={({ field }) => (
 									<FormItem>
-										<FormLabel>
-											Pricing fields <span className="text-red-500">*</span>{" "}
-											<span className="text-muted-foreground text-xs font-normal">(USD per unit)</span>
-										</FormLabel>
-										<PricingFieldSelector
-											key={open ? (editingOverride?.id ?? "new") : "closed"}
-											values={field.value}
-											errors={pricingFieldErrors}
-											selectedRequestTypes={requestTypes}
-											onChange={(key, value) => {
-												handleFieldChange();
-												field.onChange({ ...field.value, [key]: value });
-												clearErrors("pricingValues");
-											}}
-											onFieldInteraction={handleFieldChange}
-										/>
-										<FormMessage />
+										<FormLabel>Pricing mode</FormLabel>
+										<FormControl>
+											<div className="bg-muted grid grid-cols-2 gap-1 rounded-md p-1" role="group" aria-label="Pricing mode">
+												{(["fixed", "discount"] as const).map((mode) => (
+													<Button
+														key={mode}
+														type="button"
+														variant="ghost"
+														className={cn("h-8", field.value === mode && "bg-background shadow-sm hover:bg-background")}
+														aria-pressed={field.value === mode}
+														data-testid={`pricing-override-mode-${mode}`}
+														onClick={() => {
+															field.onChange(mode);
+															jsonEditingRef.current = false;
+															clearErrors(["pricingValues", "discountPercent"]);
+															if (mode === "discount") {
+																if (getValues("pattern").trim() === "") {
+																	setValue("matchType", "wildcard");
+																	setValue("pattern", "*");
+																}
+																if (requestTypes.length === 0) setValue("requestTypes", [...REQUEST_TYPE_OPTIONS] as RequestType[]);
+															}
+														}}
+													>
+														{mode === "fixed" ? "Fixed prices" : "Contract discount"}
+													</Button>
+												))}
+											</div>
+										</FormControl>
 									</FormItem>
 								)}
 							/>
+
+							{pricingMode === "discount" ? (
+								<FormField
+									control={control}
+									name="discountPercent"
+									render={({ field }) => (
+										<FormItem>
+											<FormLabel>
+												Discount <span className="text-red-500">*</span>
+											</FormLabel>
+											<FormControl>
+												<div className="relative">
+													<Input
+														{...field}
+														data-testid="pricing-override-discount-input"
+														type="text"
+														inputMode="decimal"
+														className="pr-14"
+														placeholder="20"
+														onChange={(event) => {
+															field.onChange(event);
+															jsonEditingRef.current = false;
+															clearErrors("discountPercent");
+														}}
+													/>
+													<span className="text-muted-foreground pointer-events-none absolute top-1/2 right-3 -translate-y-1/2 text-sm">
+														% off
+													</span>
+												</div>
+											</FormControl>
+											<FormMessage />
+										</FormItem>
+									)}
+								/>
+							) : (
+								<FormField
+									control={control}
+									name="pricingValues"
+									render={({ field }) => (
+										<FormItem>
+											<FormLabel>
+												Pricing fields <span className="text-red-500">*</span>{" "}
+												<span className="text-muted-foreground text-xs font-normal">(USD per unit)</span>
+											</FormLabel>
+											<PricingFieldSelector
+												key={open ? (editingOverride?.id ?? "new") : "closed"}
+												values={field.value}
+												errors={pricingFieldErrors}
+												selectedRequestTypes={requestTypes}
+												onChange={(key, value) => {
+													handleFieldChange();
+													field.onChange({ ...field.value, [key]: value });
+													clearErrors("pricingValues");
+												}}
+												onFieldInteraction={handleFieldChange}
+											/>
+											<FormMessage />
+										</FormItem>
+									)}
+								/>
+							)}
 
 							<div className="space-y-2">
 								<Label className="text-muted-foreground text-xs">JSON</Label>

@@ -98193,8 +98193,14 @@
       },
       "PricingPatch": {
         "type": "object",
-        "description": "Pricing fields to override. All non-null fields are applied. Usage-based values are costs per unit in USD. cost_per_request is a flat fee in USD applied once per billed request.\n",
+        "description": "Pricing fields to override. All non-null fields are applied. Usage-based values are costs per unit in USD. cost_per_request is a flat fee in USD applied once per billed request. cost_multiplier applies a negotiated contract multiplier to the final catalog-computed request cost and cannot be combined with explicit pricing fields.\n",
         "properties": {
+          "cost_multiplier": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "maximum": 1,
+            "description": "Contract multiplier applied to the final catalog-computed request cost. For example, 0.8 bills at 80% of the base cost."
+          },
           "input_cost_per_token": {
             "type": "number",
             "minimum": 0

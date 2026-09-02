@@ -679,10 +679,22 @@ export function pricingFieldUnit(key: string): PricingFieldUnit {
 
 export type PricingFieldKey = (typeof PRICING_FIELDS)[number]["key"];
 
-export const fieldLabelByKey = Object.fromEntries(PRICING_FIELDS.map((field) => [field.key, field.label])) as Record<
-	PricingFieldKey,
-	string
->;
+export const fieldLabelByKey: Record<string, string> = {
+	...Object.fromEntries(PRICING_FIELDS.map((field) => [field.key, field.label])),
+	cost_multiplier: "Contract cost multiplier",
+};
 export const patchKeys = PRICING_FIELDS.map((field) => field.key) as PricingFieldKey[];
 
 export type FieldErrors = Partial<Record<PricingFieldKey | "name" | "scope" | "pattern" | "patch", string>>;
+
+export function discountPercentError(raw: string): string | undefined {
+	if (raw.trim() === "") return "Discount is required";
+	const percent = Number(raw);
+	if (!Number.isFinite(percent)) return "Discount must be a number";
+	if (percent <= 0 || percent >= 100) return "Discount must be greater than 0% and less than 100%";
+	return undefined;
+}
+
+export function multiplierToDiscountPercent(multiplier: number): string {
+	return String(Number(((1 - multiplier) * 100).toFixed(8)));
+}
