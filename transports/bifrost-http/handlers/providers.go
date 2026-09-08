@@ -50,6 +50,11 @@ type ModelsManager interface {
 	// The models listing narrows its provider fan-out to what the request may reach, by the same
 	// rule the integration routes use.
 	NarrowListModelsProviders(bifrostCtx *schemas.BifrostContext)
+	// EvaluateListModelsAccess runs the governance admission funnel for a list-models
+	// request without routing it (no provider is called), and returns the request's
+	// access for the caller to filter the listing with. governed is false when no
+	// governance plugin is loaded — the caller should fall back to the upstream path.
+	EvaluateListModelsAccess(ctx *schemas.BifrostContext, provider schemas.ModelProvider) (access schemas.Access, governed bool, bErr *schemas.BifrostError)
 }
 
 // ErrRefreshInProgress is returned by the on-demand model refresh entrypoints
