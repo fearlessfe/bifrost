@@ -904,6 +904,29 @@ func (h *CompletionHandler) listModels(ctx *fasthttp.RequestCtx) {
 	}
 	pageToken := string(ctx.QueryArgs().Peek("page_token"))
 
+	// Fast path: a governed request is answered from the local model catalog
+	// (filtered by the access its credential resolved to) instead of fanning
+	// out to every provider's list-models endpoint. Falls through to the
+	// upstream path when governance is not loaded, no access was resolved (a
+	// request that presented nothing lists what it always listed), or no
+	// catalog is configured.
+	if h.modelsManager != nil {
+		access, governed, admissionErr := h.modelsManager.EvaluateListModelsAccess(bifrostCtx, schemas.ModelProvider(provider))
+		if admissionErr != nil {
+			SendBifrostError(ctx, admissionErr)
+			return
+		}
+		if governed && h.config.ModelCatalog != nil {
+			if resp := lib.CatalogListModelsResponse(h.config.ModelCatalog, access, schemas.ModelProvider(provider), pageSize, pageToken, ""); resp != nil {
+				enrichListModelsResponse(resp, h.config.ModelCatalog)
+				lib.StripProviderPrefixesFromModelList(resp, lib.CatalogModelPriorityFn(h.config.ModelCatalog))
+				lib.ApplyBifrostResponseHeaders(ctx, bifrostCtx, resp.ExtraFields)
+				SendJSON(ctx, resp)
+				return
+			}
+		}
+	}
+
 	bifrostListModelsReq := &schemas.BifrostListModelsRequest{
 		Provider:  schemas.ModelProvider(provider),
 		PageSize:  pageSize,

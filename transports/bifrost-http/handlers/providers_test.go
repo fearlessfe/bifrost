@@ -40,11 +40,27 @@ type mockModelsManager struct {
 	// key presented, or a deployment without governance.
 	access       schemas.Access
 	resolveCalls int
+	// governed reports whether EvaluateListModelsAccess ran admission; evaluateErr is the
+	// admission refusal to return.
+	governed    bool
+	evaluateErr *schemas.BifrostError
 }
 
 func (m *mockModelsManager) ResolveAccess(_ *schemas.BifrostContext) (schemas.Access, error) {
 	m.resolveCalls++
 	return m.access, nil
+}
+
+// EvaluateListModelsAccess mirrors the server's contract for tests: governed reports
+// whether admission ran at all, and the configured access is what filtering sees.
+func (m *mockModelsManager) EvaluateListModelsAccess(_ *schemas.BifrostContext, _ schemas.ModelProvider) (schemas.Access, bool, *schemas.BifrostError) {
+	if m.evaluateErr != nil {
+		return nil, true, m.evaluateErr
+	}
+	if !m.governed {
+		return nil, false, nil
+	}
+	return m.access, true, nil
 }
 
 func (m *mockModelsManager) ReloadProvider(_ context.Context, provider schemas.ModelProvider) (*configstoreTables.TableProvider, error) {

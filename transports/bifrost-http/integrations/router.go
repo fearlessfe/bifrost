@@ -965,15 +965,39 @@ func (g *GenericRouter) handleNonStreamingRequest(ctx *fasthttp.RequestCtx, conf
 		var listModelsResponse *schemas.BifrostListModelsResponse
 		var bifrostErr *schemas.BifrostError
 
-		if bifrostReq.ListModelsRequest.Provider != "" {
-			listModelsResponse, bifrostErr = g.client.ListModelsRequest(bifrostCtx, bifrostReq.ListModelsRequest)
-		} else {
-			listModelsResponse, bifrostErr = g.client.ListAllModels(bifrostCtx, bifrostReq.ListModelsRequest)
+		// Fast path: a governed request is answered from the local model catalog
+		// (filtered by the access its credential resolved to) instead of fanning
+		// out to every provider's list-models endpoint. Falls through to the
+		// upstream path when governance is not loaded, no access was resolved (a
+		// request that presented nothing lists what it always listed), or no
+		// catalog is configured.
+		if catalogProvider, ok := g.handlerStore.(modelCatalogProvider); ok && catalogProvider.GetModelCatalog() != nil {
+			access, governed, admissionErr := lib.EvaluateListModelsAccess(g.handlerStore, bifrostCtx, bifrostReq.ListModelsRequest.Provider)
+			if admissionErr != nil {
+				g.sendError(ctx, bifrostCtx, config.ErrorConverter, admissionErr)
+				return
+			}
+			if governed {
+				afterID, _ := bifrostReq.ListModelsRequest.ExtraParams["after_id"].(string)
+				beforeID, _ := bifrostReq.ListModelsRequest.ExtraParams["before_id"].(string)
+				listModelsResponse = lib.CatalogListModelsResponseWithCursors(
+					catalogProvider.GetModelCatalog(), access, bifrostReq.ListModelsRequest.Provider,
+					bifrostReq.ListModelsRequest.PageSize, bifrostReq.ListModelsRequest.PageToken, afterID, beforeID,
+				)
+			}
 		}
 
-		if bifrostErr != nil {
-			g.sendError(ctx, bifrostCtx, config.ErrorConverter, bifrostErr)
-			return
+		if listModelsResponse == nil {
+			if bifrostReq.ListModelsRequest.Provider != "" {
+				listModelsResponse, bifrostErr = g.client.ListModelsRequest(bifrostCtx, bifrostReq.ListModelsRequest)
+			} else {
+				listModelsResponse, bifrostErr = g.client.ListAllModels(bifrostCtx, bifrostReq.ListModelsRequest)
+			}
+
+			if bifrostErr != nil {
+				g.sendError(ctx, bifrostCtx, config.ErrorConverter, bifrostErr)
+				return
+			}
 		}
 
 		if config.PostCallback != nil {
