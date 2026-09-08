@@ -180,6 +180,10 @@ type ServerCallbacks interface {
 	// for the listing routes that run outside the request pipeline and so cannot wait for a hook
 	// to resolve it.
 	ResolveAccess(ctx *schemas.BifrostContext) (schemas.Access, error)
+	// EvaluateListModelsAccess runs the governance admission funnel for a list-models request
+	// without routing it, returning the request's access for the caller to filter the listing
+	// with. governed is false when no governance plugin is loaded.
+	EvaluateListModelsAccess(ctx *schemas.BifrostContext, provider schemas.ModelProvider) (access schemas.Access, governed bool, bErr *schemas.BifrostError)
 }
 
 // GovernanceRouteOverridesProvider lets downstream editions replace selected OSS governance route families.
@@ -1362,6 +1366,37 @@ func (s *BifrostHTTPServer) ResolveAccess(ctx *schemas.BifrostContext) (schemas.
 		return nil, nil
 	}
 	return governancePlugin.ResolveAccess(ctx)
+}
+
+// EvaluateListModelsAccess runs the governance admission funnel for a list-models request
+// without routing it: every check a per-provider fan-out request would face in PreLLMHook
+// (mandatory key, credential validity, access) runs here once, and spending checks are
+// skipped because a listing spends nothing. The resolved access is returned for the caller
+// to filter the listing with.
+//
+// governed is false when no governance plugin is loaded — the caller falls back to the
+// upstream fan-out path in that case, exactly as a deployment without governance behaves
+// today.
+func (s *BifrostHTTPServer) EvaluateListModelsAccess(ctx *schemas.BifrostContext, provider schemas.ModelProvider) (schemas.Access, bool, *schemas.BifrostError) {
+	governancePlugin, err := s.getGovernancePlugin()
+	if err != nil {
+		return nil, false, nil
+	}
+	ctx.SetValue(schemas.BifrostContextKeySkipBudgetAndRateLimits, true)
+	if _, bifrostErr := governancePlugin.Evaluate(ctx, &governance.EvaluationRequest{
+		RequestType: schemas.ListModelsRequest,
+		Provider:    provider,
+	}); bifrostErr != nil {
+		return nil, true, bifrostErr
+	}
+	access, err := governancePlugin.ResolveAccess(ctx)
+	if err != nil {
+		return nil, true, &schemas.BifrostError{
+			IsBifrostError: false,
+			Error:          &schemas.ErrorField{Message: err.Error()},
+		}
+	}
+	return access, true, nil
 }
 
 // AdmitMCPGatewayRequest runs a /mcp request through the governance funnel before any tool is listed

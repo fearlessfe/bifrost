@@ -46,6 +46,11 @@ type ModelsManager interface {
 	// than waiting for a hook to. Nil means nothing was resolved: no key was presented, or the
 	// deployment has no governance at all. An error is a request nothing settled who it is.
 	ResolveAccess(ctx *schemas.BifrostContext) (schemas.Access, error)
+	// EvaluateListModelsAccess runs the governance admission funnel for a list-models
+	// request without routing it (no provider is called), and returns the request's
+	// access for the caller to filter the listing with. governed is false when no
+	// governance plugin is loaded — the caller should fall back to the upstream path.
+	EvaluateListModelsAccess(ctx *schemas.BifrostContext, provider schemas.ModelProvider) (access schemas.Access, governed bool, bErr *schemas.BifrostError)
 }
 
 // ErrRefreshInProgress is returned by the on-demand model refresh entrypoints
