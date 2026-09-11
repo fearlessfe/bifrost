@@ -209,6 +209,11 @@ type MCPConfig struct {
 	ToolManagerConfig *MCPToolManagerConfig `json:"tool_manager_config,omitempty"` // MCP tool manager configuration
 	ToolSyncInterval  time.Duration         `json:"tool_sync_interval,omitempty"`  // Global default interval for syncing tools from MCP servers (0 = use default 10 min)
 
+	// VirtualMCPs are Virtual MCP definitions declared in config.json: named bundles of tools from one
+	// or more MCP clients, served at /mcp/<endpoint_slug> and assignable to virtual keys. Reconciled
+	// into the config store at load. This is the canonical key; mcp.tool_groups is a deprecated alias.
+	VirtualMCPs []VirtualMCPConfig `json:"virtual_mcps,omitempty"`
+
 	// Function to fetch a new request ID for each tool call result message in agent mode,
 	// this is used to ensure that the tool call result messages are unique and can be tracked in plugins or by the user.
 	// This id is attached to ctx.Value(schemas.BifrostContextKeyRequestID) in the agent mode.
@@ -223,6 +228,35 @@ type MCPConfig struct {
 	// ReleasePluginPipeline releases a plugin pipeline back to the pool.
 	// This should be called after the plugin pipeline is no longer needed.
 	ReleasePluginPipeline func(pipeline interface{}) `json:"-"`
+}
+
+// VirtualMCPConfig is a Virtual MCP declared in config.json (mcp.virtual_mcps). It reconciles into a
+// Virtual MCP in the config store: a bundle of tools from one or more MCP clients, served at
+// /mcp/<endpoint_slug> and attachable to virtual keys.
+type VirtualMCPConfig struct {
+	// ID, when set, updates the Virtual MCP with this DB id rather than matching by name.
+	ID uint `json:"id,omitempty"`
+	// Name is the display name (required, unique).
+	Name string `json:"name"`
+	// EndpointSlug is the URL-safe path the Virtual MCP is served at (/mcp/<slug>). Honored on create
+	// only (immutable after); derived from the name when omitted. Unique across Virtual MCPs and MCP clients.
+	EndpointSlug string `json:"endpoint_slug,omitempty"`
+	// Description is free text.
+	Description *string `json:"description,omitempty"`
+	// Enabled defaults to true when omitted; a disabled Virtual MCP is not served.
+	Enabled *bool `json:"enabled,omitempty"`
+	// Tools are the per-client tool specs the Virtual MCP exposes (required).
+	Tools []MCPToolSpecConfig `json:"tools"`
+	// VirtualKeyIDs are the virtual keys this Virtual MCP is attached to (reachable through them).
+	VirtualKeyIDs []string `json:"virtual_key_ids,omitempty"`
+}
+
+// MCPToolSpecConfig names a source MCP client (by id or name) and which of its tools a Virtual MCP
+// exposes: ["*"] = all (including future tools), [] = none, a named list = only those.
+type MCPToolSpecConfig struct {
+	MCPClientID   string   `json:"mcp_client_id,omitempty"`
+	MCPClientName string   `json:"mcp_client_name,omitempty"`
+	ToolNames     []string `json:"tool_names,omitempty"`
 }
 
 // UnmarshalJSON supports Go duration strings (e.g. "10m") for tool_sync_interval.
@@ -439,6 +473,7 @@ func (c *MCPTokenExchangeConfig) DiffersFrom(resolved *MCPTokenExchangeConfig) b
 type MCPClientConfig struct {
 	ID                string            `json:"client_id"`                     // Client ID
 	Name              string            `json:"name"`                          // Client name
+	EndpointSlug      string            `json:"endpoint_slug"`                 // URL-safe, immutable; serves /mcp/<slug>
 	IsCodeModeClient  bool              `json:"is_code_mode_client"`           // Whether the client is a code mode client
 	ConnectionType    MCPConnectionType `json:"connection_type"`               // How to connect (HTTP, STDIO, SSE, or InProcess)
 	ConnectionString  *SecretVar        `json:"connection_string,omitempty"`   // HTTP or SSE URL (required for HTTP or SSE connections)
@@ -853,6 +888,66 @@ const (
 	MCPConnectionStateDegraded MCPConnectionState = "degraded"
 )
 
+// MCPConnectionFailureStage names the step of Bifrost's own connection
+// handling that most recently failed for a client. It is the "what was
+// Bifrost doing when this broke" half of an MCPConnectionFailure; the error
+// text is the other half.
+type MCPConnectionFailureStage string
+
+const (
+	// MCPConnectionFailureStageConnect is establishing the shared connection:
+	// the dial, the MCP initialize handshake, the connect plugin gate, or the
+	// initial list_tools a fresh connection must pass before it counts as
+	// established.
+	MCPConnectionFailureStageConnect MCPConnectionFailureStage = "connect"
+	// MCPConnectionFailureStagePing is the periodic check's ping over an
+	// existing shared connection.
+	MCPConnectionFailureStagePing MCPConnectionFailureStage = "ping"
+	// MCPConnectionFailureStageListTools is the periodic check's list_tools
+	// over an existing shared connection.
+	MCPConnectionFailureStageListTools MCPConnectionFailureStage = "list_tools"
+	// MCPConnectionFailureStageToolDiscovery is the periodic check's
+	// ephemeral connect-discover-close cycle for per-call auth types, which
+	// never hold a shared connection to ping.
+	MCPConnectionFailureStageToolDiscovery MCPConnectionFailureStage = "tool_discovery"
+	// MCPConnectionFailureStageTransportLost is a live SSE connection
+	// dropping underneath the client, outside any check.
+	MCPConnectionFailureStageTransportLost MCPConnectionFailureStage = "transport_lost"
+	// MCPConnectionFailureStageCredential is a credential the client depends
+	// on becoming unusable: an OAuth refresh rejected upstream, a rotation
+	// that invalidated the stored token, or a retained admin discovery
+	// credential that needs repair.
+	MCPConnectionFailureStageCredential MCPConnectionFailureStage = "credential"
+)
+
+// MCPConnectionFailure records why a client most recently left, or failed to
+// reach, MCPConnectionStateHealthy on this instance. It is the explanation
+// behind a non-healthy State: which step failed, the error it failed with,
+// when that last happened, and when the current run of failures began.
+//
+// Lifecycle: written by every failure path that moves State away from
+// Healthy (the periodic connection check, a failed connect attempt, a dropped
+// SSE transport, a dead credential), refreshed on every subsequent failure so
+// At always reflects the most recent attempt while Since keeps the first, and
+// cleared the moment any success moves State back to Healthy. It is only ever
+// replaced wholesale, never mutated in place, so a snapshot that copied the
+// pointer keeps describing the failure it was taken with.
+type MCPConnectionFailure struct {
+	Stage   MCPConnectionFailureStage `json:"stage"`   // Which step of Bifrost's own connection handling failed
+	Message string                    `json:"message"` // The error, whitespace-collapsed and length-bounded
+	At      time.Time                 `json:"at"`      // The most recent failed attempt
+	Since   time.Time                 `json:"since"`   // The first failed attempt of the current unhealthy run
+}
+
+// MCPInstanceState is one instance's own view of a client: its self-reported
+// connection state and, when that state is not Healthy, the failure behind
+// it. A single instance's view is just this pair; a distributed deployment
+// compares one per instance to decide whether they agree.
+type MCPInstanceState struct {
+	State       MCPConnectionState    `json:"state"`
+	LastFailure *MCPConnectionFailure `json:"last_failure,omitempty"`
+}
+
 // MCPClientState represents a connected MCP client with its configuration and tools.
 // It is used internally by the MCP manager to track the state of a connected MCP client.
 type MCPClientState struct {
@@ -864,8 +959,9 @@ type MCPClientState struct {
 	ConnectionInfo  *MCPClientConnectionInfo `json:"connection_info"` // Connection metadata for management
 	CancelFunc      context.CancelFunc       `json:"-"`               // Cancel function for SSE connections (not serialized)
 	State           MCPConnectionState       // Connection state (healthy, unstable, needs_reauth, ...)
-	ConnGeneration  uint64                   `json:"-"` // Counts connection swaps; late writers bound to an older Conn compare against it to detect staleness (not serialized)
-	LastToolsHash   string                   `json:"-"` // Content hash of the last ToolMap/ToolNameMapping the tools-change callback fired for; gates the funnel to genuine changes only (not serialized)
+	LastFailure     *MCPConnectionFailure    `json:"last_failure,omitempty"` // Why State is not Healthy; nil while Healthy (see MCPConnectionFailure)
+	ConnGeneration  uint64                   `json:"-"`                      // Counts connection swaps; late writers bound to an older Conn compare against it to detect staleness (not serialized)
+	LastToolsHash   string                   `json:"-"`                      // Content hash of the last ToolMap/ToolNameMapping the tools-change callback fired for; gates the funnel to genuine changes only (not serialized)
 }
 
 // MCPClientConnectionInfo stores metadata about how a client is connected.
@@ -879,7 +975,8 @@ type MCPClientConnectionInfo struct {
 // and connection information, after it has been initialized.
 // It is returned by GetMCPClients() method in bifrost.
 type MCPClient struct {
-	Config *MCPClientConfig   `json:"config"` // Tool filtering settings
-	Tools  []ChatToolFunction `json:"tools"`  // Available tools
-	State  MCPConnectionState `json:"state"`  // Connection state
+	Config      *MCPClientConfig      `json:"config"`                 // Tool filtering settings
+	Tools       []ChatToolFunction    `json:"tools"`                  // Available tools
+	State       MCPConnectionState    `json:"state"`                  // Connection state
+	LastFailure *MCPConnectionFailure `json:"last_failure,omitempty"` // Why State is not Healthy; nil while Healthy
 }
