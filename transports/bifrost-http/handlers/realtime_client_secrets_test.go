@@ -407,13 +407,9 @@ func TestCacheRealtimeEphemeralKeyMappingStoresKeyID(t *testing.T) {
 	if err != nil {
 		t.Fatalf("store.Get() error = %v", err)
 	}
-	value, ok := raw.([]byte)
+	mapping, ok := raw.(realtimeEphemeralKeyMapping)
 	if !ok {
-		t.Fatalf("cached value type = %T, want []byte", raw)
-	}
-	var mapping realtimeEphemeralKeyMapping
-	if err := json.Unmarshal(value, &mapping); err != nil {
-		t.Fatalf("json.Unmarshal() error = %v", err)
+		t.Fatalf("cached value type = %T, want realtimeEphemeralKeyMapping", raw)
 	}
 	if mapping.KeyID != "key_123" {
 		t.Fatalf("mapping.KeyID = %q, want %q", mapping.KeyID, "key_123")
@@ -457,6 +453,14 @@ func TestIsJSONContentType(t *testing.T) {
 		t.Fatal("expected text/plain content type to fail")
 	}
 }
+
+// The handler finds the governance plugin by type-asserting each base plugin
+// against governance.BaseGovernancePlugin, so a mock that falls behind the
+// interface stops being found — silently, and without a build failure. Minting
+// then skips governance entirely and every assertion below still reads as a
+// passing "no governance configured" path. This line turns that drift into a
+// compile error at the point the interface grows.
+var _ governance.BaseGovernancePlugin = (*mockRealtimeMintingGovernancePlugin)(nil)
 
 type mockRealtimeMintingGovernancePlugin struct {
 	err            *schemas.BifrostError

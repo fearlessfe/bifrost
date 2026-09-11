@@ -600,13 +600,15 @@ func (h *ConfigHandler) updateConfig(ctx *fasthttp.RequestCtx) {
 	newCompat := payload.ClientConfig.Compat
 	oldCompat := currentConfig.Compat
 	if newCompat != oldCompat {
-		newEnabled := newCompat.ConvertTextToChat || newCompat.ConvertChatToResponses || newCompat.ShouldDropParams || newCompat.ShouldConvertParams
+		newEnabled := newCompat.ConvertTextToChat || newCompat.ConvertChatToResponses || newCompat.ShouldDropParams || newCompat.ShouldConvertParams ||
+			newCompat.AzureDeepseek
 		if newEnabled {
 			compatCfg := &compat.Config{
 				ConvertTextToChat:      newCompat.ConvertTextToChat,
 				ConvertChatToResponses: newCompat.ConvertChatToResponses,
 				ShouldDropParams:       newCompat.ShouldDropParams,
 				ShouldConvertParams:    newCompat.ShouldConvertParams,
+				AzureDeepseek:          newCompat.AzureDeepseek,
 			}
 			if err := h.configManager.ReloadPlugin(ctx, compat.PluginName, nil, compatCfg, nil, nil); err != nil {
 				logger.Warn("failed to load compat plugin: %v", err)
@@ -655,6 +657,10 @@ func (h *ConfigHandler) updateConfig(ctx *fasthttp.RequestCtx) {
 
 	// Toggle whether deleted virtual keys should appear in logs filter data.
 	updatedConfig.HideDeletedVirtualKeysInFilters = payload.ClientConfig.HideDeletedVirtualKeysInFilters
+
+	// Request types hidden from log reads. No restart needed: the log routes read the
+	// live client config on every request, and the filter-data cache keys on the list.
+	updatedConfig.HiddenRequestTypes = lib.NormalizeHiddenRequestTypes(payload.ClientConfig.HiddenRequestTypes)
 
 	// Toggle allowing per-request override for content storage and raw request/response storage
 	updatedConfig.AllowPerRequestContentStorageOverride = payload.ClientConfig.AllowPerRequestContentStorageOverride

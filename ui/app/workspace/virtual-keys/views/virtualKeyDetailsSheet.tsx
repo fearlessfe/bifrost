@@ -528,19 +528,19 @@ export default function VirtualKeyDetailSheet({
 								</div>
 							</div>
 
-							{/* MCP Client Configurations */}
+							{/* MCP Server Configurations */}
 							<div className="space-y-4">
-								<h3 className="font-semibold">MCP Client Configurations</h3>
+								<h3 className="font-semibold">MCP Server Configurations</h3>
 
 								<div className="space-y-3">
 									{!virtualKey.mcp_configs || virtualKey.mcp_configs.length === 0 ? (
-										<span className="text-muted-foreground text-sm">No MCP clients configured (deny-by-default)</span>
+										<span className="text-muted-foreground text-sm">No MCP servers configured</span>
 									) : (
 										<div className="rounded-md border">
 											<Table>
 												<TableHeader>
 													<TableRow>
-														<TableHead>MCP Client</TableHead>
+														<TableHead>MCP Server</TableHead>
 														<TableHead>Allowed Tools</TableHead>
 													</TableRow>
 												</TableHeader>

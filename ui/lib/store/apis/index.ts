@@ -21,4 +21,5 @@ export * from "./promptsApi";
 export * from "./serviceTokensApi";
 export * from "./sessionApi";
 export * from "./skillsApi";
+export * from "./virtualMcpsApi";
 export * from "./webhooksApi";

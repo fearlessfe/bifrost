@@ -229,7 +229,7 @@ type BifrostResponsesResponse struct {
 	Instructions         *ResponsesResponseInstructions      `json:"instructions"`
 	MaxOutputTokens      *int                                `json:"max_output_tokens"`
 	MaxToolCalls         *int                                `json:"max_tool_calls"`
-	Metadata             *map[string]any                     `json:"metadata,omitempty"`
+	Metadata             *map[string]any                     `json:"metadata"`
 	Model                string                              `json:"model"`
 	Output               []ResponsesMessage                  `json:"output"`
 	ParallelToolCalls    *bool                               `json:"parallel_tool_calls,omitempty"`
@@ -1758,6 +1758,10 @@ const (
 	ResponsesOutputMessageContentTypeRefusal   ResponsesMessageContentBlockType = "refusal"
 	ResponsesOutputMessageContentTypeReasoning ResponsesMessageContentBlockType = "reasoning_text"
 
+	// Part type on response.reasoning_summary_part.{added,done}, where the event's
+	// part field is required.
+	ResponsesOutputMessageContentTypeSummaryText ResponsesMessageContentBlockType = "summary_text"
+
 	// gemini sends rendered content in google search results
 	ResponsesOutputMessageContentTypeRenderedContent ResponsesMessageContentBlockType = "rendered_content"
 
@@ -2033,6 +2037,7 @@ type ResponsesCodeExecutionCall struct {
 }
 
 type ResponsesToolMessageActionStruct struct {
+	ResponsesToolCallActionStr        *string // Bare-string action (e.g. image_generation_call's "generate")
 	ResponsesComputerToolCallAction   *ResponsesComputerToolCallAction
 	ResponsesWebSearchToolCallAction  *ResponsesWebSearchToolCallAction
 	ResponsesWebFetchToolCallAction   *ResponsesWebFetchToolCallAction
@@ -2041,6 +2046,9 @@ type ResponsesToolMessageActionStruct struct {
 }
 
 func (action ResponsesToolMessageActionStruct) MarshalJSON() ([]byte, error) {
+	if action.ResponsesToolCallActionStr != nil {
+		return MarshalSorted(*action.ResponsesToolCallActionStr)
+	}
 	if action.ResponsesComputerToolCallAction != nil {
 		return MarshalSorted(action.ResponsesComputerToolCallAction)
 	}
@@ -2060,6 +2068,13 @@ func (action ResponsesToolMessageActionStruct) MarshalJSON() ([]byte, error) {
 }
 
 func (action *ResponsesToolMessageActionStruct) UnmarshalJSON(data []byte) error {
+	// Some actions are bare strings, not objects (e.g. image_generation_call's "generate")
+	var str string
+	if err := Unmarshal(data, &str); err == nil {
+		action.ResponsesToolCallActionStr = &str
+		return nil
+	}
+
 	// First, peek at the type field to determine which variant to unmarshal
 	var typeStruct struct {
 		Type string `json:"type"`
@@ -2376,6 +2391,13 @@ type ResponsesReasoningSummary struct {
 // ResponsesImageGenerationCall represents an image generation tool call
 type ResponsesImageGenerationCall struct {
 	Result string `json:"result"`
+
+	// Generation settings echoed back on the completed item.
+	Background    *string `json:"background,omitempty"`
+	OutputFormat  *string `json:"output_format,omitempty"`
+	Quality       *string `json:"quality,omitempty"`
+	RevisedPrompt *string `json:"revised_prompt,omitempty"`
+	Size          *string `json:"size,omitempty"`
 }
 
 // -----------------------------------------------------------------------------
@@ -2581,6 +2603,45 @@ type ResponsesToolChoiceStruct struct {
 type ResponsesToolChoice struct {
 	ResponsesToolChoiceStr    *string
 	ResponsesToolChoiceStruct *ResponsesToolChoiceStruct
+}
+
+// IsForced reports whether the choice obliges the model to call a tool, in any
+// of its spellings — "any"/"required", a named function or custom tool, a
+// pinned server tool, or an allowed-tools set in "required" mode. Only "none"
+// and "auto" are unforced. Models that reject forced tool use (Fable 5.1+)
+// need the choice dropped; see ModelCaps.SupportsForcedToolChoice.
+func (tc *ResponsesToolChoice) IsForced() bool {
+	if tc == nil {
+		return false
+	}
+	if tc.ResponsesToolChoiceStr != nil {
+		return forcedResponsesToolChoiceMode(*tc.ResponsesToolChoiceStr)
+	}
+	if s := tc.ResponsesToolChoiceStruct; s != nil {
+		switch s.Type {
+		case ResponsesToolChoiceTypeNone, ResponsesToolChoiceTypeAuto:
+			return false
+		case ResponsesToolChoiceTypeAllowedTools:
+			// The set is a constraint, not a forcing; only its mode forces.
+			return s.Mode != nil && forcedResponsesToolChoiceMode(*s.Mode)
+		case "":
+			// Mode-only choice; it serializes as the bare mode string.
+			return s.Mode != nil && forcedResponsesToolChoiceMode(*s.Mode)
+		default:
+			return true
+		}
+	}
+	return false
+}
+
+// forcedResponsesToolChoiceMode reports whether a bare mode string forces a call.
+func forcedResponsesToolChoiceMode(mode string) bool {
+	switch ResponsesToolChoiceType(mode) {
+	case ResponsesToolChoiceTypeNone, ResponsesToolChoiceTypeAuto:
+		return false
+	default:
+		return true
+	}
 }
 
 // MarshalJSON implements custom JSON marshalling for ChatMessageContent.
@@ -3542,6 +3603,7 @@ type ResponsesToolCodeInterpreter struct {
 
 // ResponsesToolImageGeneration represents a tool image generation
 type ResponsesToolImageGeneration struct {
+	Action            *string                                     `json:"action,omitempty"`             // "generate" | "edit" | "auto"
 	Background        *string                                     `json:"background,omitempty"`         // "transparent" | "opaque" | "auto"
 	InputFidelity     *string                                     `json:"input_fidelity,omitempty"`     // "high" | "low"
 	InputImageMask    *ResponsesToolImageGenerationInputImageMask `json:"input_image_mask,omitempty"`   // Optional mask for inpainting
