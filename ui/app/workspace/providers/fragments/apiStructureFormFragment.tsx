@@ -37,6 +37,7 @@ export function ApiStructureFormFragment({ provider }: Props) {
 			base_provider_type: provider.custom_provider_config?.base_provider_type ?? "openai",
 			is_key_less: provider.custom_provider_config?.is_key_less ?? false,
 			does_not_send_done_marker: provider.custom_provider_config?.does_not_send_done_marker ?? false,
+			uses_legacy_max_tokens: provider.custom_provider_config?.uses_legacy_max_tokens ?? false,
 			allowed_requests: {
 				text_completion: provider.custom_provider_config?.allowed_requests?.text_completion ?? true,
 				text_completion_stream: provider.custom_provider_config?.allowed_requests?.text_completion_stream ?? true,
@@ -78,6 +79,7 @@ export function ApiStructureFormFragment({ provider }: Props) {
 					base_provider_type: data.base_provider_type as unknown as BaseProvider,
 					is_key_less: data.is_key_less ?? false,
 					does_not_send_done_marker: data.does_not_send_done_marker ?? false,
+					uses_legacy_max_tokens: data.uses_legacy_max_tokens ?? false,
 					allowed_requests: data.allowed_requests,
 					request_path_overrides: cleanPathOverrides(data.request_path_overrides),
 				},
@@ -178,6 +180,33 @@ export function ApiStructureFormFragment({ provider }: Props) {
 										</div>
 										<Switch
 											id="does-not-send-done-marker"
+											size="md"
+											checked={field.value}
+											onCheckedChange={field.onChange}
+											disabled={!hasUpdateProviderAccess}
+										/>
+									</div>
+								</FormItem>
+							)}
+						/>
+					)}
+					{!isDoneMarkerToggleDisabled && (
+						<FormField
+							control={form.control}
+							name="uses_legacy_max_tokens"
+							render={({ field }) => (
+								<FormItem>
+									<div className="flex items-center justify-between space-x-2 rounded-lg border p-3">
+										<div className="space-y-0.5">
+											<label htmlFor="uses-legacy-max-tokens" className="text-sm font-medium">
+												Uses Legacy max_tokens?
+											</label>
+											<p className="text-muted-foreground text-sm">
+												Send max_tokens instead of max_completion_tokens on chat completions (for legacy-spec upstreams like GLM)
+											</p>
+										</div>
+										<Switch
+											id="uses-legacy-max-tokens"
 											size="md"
 											checked={field.value}
 											onCheckedChange={field.onChange}

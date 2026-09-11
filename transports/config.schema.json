@@ -8607,6 +8607,10 @@
           "type": "boolean",
           "description": "Whether the provider ends streams on finish_reason without sending a data: [DONE] marker"
         },
+        "uses_legacy_max_tokens": {
+          "type": "boolean",
+          "description": "Whether the provider follows the legacy OpenAI spec: send max_tokens instead of max_completion_tokens on chat completions"
+        },
         "base_provider_type": {
           "type": "string",
           "enum": [
