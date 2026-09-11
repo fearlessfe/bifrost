@@ -1193,14 +1193,14 @@ export function LogDetailView({
 					const contents = item?.request?.contents;
 					const messages = Array.isArray(contents)
 						? contents.map((c: any) => ({
-							role: c?.role === "model" ? "assistant" : c?.role || "user",
-							content: Array.isArray(c?.parts)
-								? c.parts
-									.filter((p: any) => p && typeof p.text === "string")
-									.map((p: any) => p.text)
-									.join("")
-								: "",
-						}))
+								role: c?.role === "model" ? "assistant" : c?.role || "user",
+								content: Array.isArray(c?.parts)
+									? c.parts
+											.filter((p: any) => p && typeof p.text === "string")
+											.map((p: any) => p.text)
+											.join("")
+									: "",
+							}))
 						: [];
 					return {
 						customId: typeof item?.metadata?.key === "string" && item.metadata.key ? item.metadata.key : `request-${index + 1}`,
@@ -1259,9 +1259,9 @@ export function LogDetailView({
 					const parts = candidate?.content?.parts;
 					const text = Array.isArray(parts)
 						? parts
-							.filter((p: any) => p && typeof p.text === "string")
-							.map((p: any) => p.text)
-							.join("")
+								.filter((p: any) => p && typeof p.text === "string")
+								.map((p: any) => p.text)
+								.join("")
 						: "";
 					const role = candidate?.content?.role === "model" ? "assistant" : candidate?.content?.role || "assistant";
 					message = { role, content: text };
@@ -1284,11 +1284,11 @@ export function LogDetailView({
 	}, [batchRawResponse]);
 	const passthroughParams = isPassthrough
 		? (log.params as {
-			method?: string;
-			path?: string;
-			raw_query?: string;
-			status_code?: number;
-		})
+				method?: string;
+				path?: string;
+				raw_query?: string;
+				status_code?: number;
+			})
 		: null;
 	// Only errors and passthrough requests carry a real HTTP status code; others have none.
 	// Non-HTTP errors (timeouts, network, marshal) default to 0; treat that as no status
@@ -1308,7 +1308,7 @@ export function LogDetailView({
 	if (declaredTools.length) {
 		try {
 			toolsParameter = JSON.stringify(declaredTools, null, 2);
-		} catch { }
+		} catch {}
 	}
 
 	const audioFormat = (log.params as any)?.audio?.format || (log.params as any)?.extra_params?.audio?.format || undefined;
@@ -1325,7 +1325,7 @@ export function LogDetailView({
 			if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
 				return Object.values(parsed).reduce<number>((sum, v) => sum + (Array.isArray(v) ? v.length : 0), 0);
 			}
-		} catch { }
+		} catch {}
 		return 0;
 	})();
 
@@ -1601,10 +1601,11 @@ export function LogDetailView({
 						}
 						sub={
 							log.token_usage
-								? `total ${formatCompactNumber(log.token_usage.total_tokens ?? 0)}${log.token_usage.completion_tokens_details?.reasoning_tokens
-									? ` · reasoning ${formatCompactNumber(log.token_usage.completion_tokens_details.reasoning_tokens)}`
-									: ""
-								}`
+								? `total ${formatCompactNumber(log.token_usage.total_tokens ?? 0)}${
+										log.token_usage.completion_tokens_details?.reasoning_tokens
+											? ` · reasoning ${formatCompactNumber(log.token_usage.completion_tokens_details.reasoning_tokens)}`
+											: ""
+									}`
 								: "—"
 						}
 						hasRightBorder
@@ -1710,9 +1711,7 @@ export function LogDetailView({
 							{!isContainer && log.server_side_fallback_model && (
 								<LogEntryDetailsView className="w-full" label="Served By (fallback)" value={log.server_side_fallback_model} />
 							)}
-							{!isContainer && log.served_model && (
-								<LogEntryDetailsView className="w-full" label="Served Model" value={log.served_model} />
-							)}
+							{!isContainer && log.served_model && <LogEntryDetailsView className="w-full" label="Served Model" value={log.served_model} />}
 							{detectedApp && (
 								<LogEntryDetailsView
 									className="w-full"
@@ -1815,7 +1814,7 @@ export function LogDetailView({
 												<TooltipTrigger asChild>
 													<button
 														type="button"
-														className="block max-w-full min-w-0 cursor-pointer truncate bg-transparent p-0 text-left font-mono font-normal text-blue-600 underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 dark:text-blue-400"
+														className="focus-visible:ring-ring block max-w-full min-w-0 cursor-pointer truncate bg-transparent p-0 text-left font-mono font-normal text-blue-600 underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none dark:text-blue-400"
 														onClick={() => onFilterBySessionId(log.session_id as string)}
 													>
 														{log.session_id}
@@ -2199,11 +2198,7 @@ export function LogDetailView({
 									    has no cost of its own. Without this the detail view of a video
 									    generation reads as free while the list beside it shows the spend. */}
 									{log.cost == null && (log.children_cost ?? 0) > 0 && (
-										<LogEntryDetailsView
-											className="w-full"
-											label="Settled Cost"
-											value={formatCostPrecise(log.children_cost)}
-										/>
+										<LogEntryDetailsView className="w-full" label="Settled Cost" value={formatCostPrecise(log.children_cost)} />
 									)}
 									{/* Additional cost (guardrail / semantic cache / routing / MCP) on its own row below. */}
 									{(log.cost_breakdown?.additional_cost ?? 0) > 0 && (
@@ -2912,7 +2907,7 @@ export function LogDetailView({
 							Content logging has been disabled for this request.
 						</div>
 					)}
-                    {/* Passthrough just renders the raw json, so there's nothing to filter */}
+					{/* Passthrough just renders the raw json, so there's nothing to filter */}
 					<div className={cn("flex justify-end", (log.content_hidden || isPassthrough) && "hidden")}>
 						<DropdownMenu>
 							<DropdownMenuTrigger asChild>
@@ -3082,11 +3077,11 @@ export function LogDetailView({
 							<div className="bg-card rounded-sm border p-5">
 								{(visibleRoles.size < allRoles.length
 									? log.input_history?.filter((m) => {
-										if (!m) return false;
-										const mainRole = ((m.role as string) || "user") as MessageRole;
-										const hasReasoning = !!extractChatReasoning(m);
-										return visibleRoles.has(mainRole) || (hasReasoning && visibleRoles.has("reasoning"));
-									})
+											if (!m) return false;
+											const mainRole = ((m.role as string) || "user") as MessageRole;
+											const hasReasoning = !!extractChatReasoning(m);
+											return visibleRoles.has(mainRole) || (hasReasoning && visibleRoles.has("reasoning"));
+										})
 									: log.input_history?.filter(Boolean)
 								)?.flatMap((message, index) => {
 									const role = ((message.role as string) || "user") as MessageRole;
@@ -3336,11 +3331,11 @@ export function LogDetailView({
 													? msg.call_id
 													: Array.isArray(msg.tools)
 														? (() => {
-															const callable = flattenDeclaredTools(msg.tools).length;
-															return callable !== msg.tools.length
-																? `${msg.type} · ${msg.tools.length} declarations · ${callable} callable tools`
-																: `${msg.type} · ${msg.tools.length} tool${msg.tools.length === 1 ? "" : "s"}`;
-														})()
+																const callable = flattenDeclaredTools(msg.tools).length;
+																return callable !== msg.tools.length
+																	? `${msg.type} · ${msg.tools.length} declarations · ${callable} callable tools`
+																	: `${msg.type} · ${msg.tools.length} tool${msg.tools.length === 1 ? "" : "s"}`;
+															})()
 														: [msg.type, summarizeResponsesToolCall(msg, mapping)].filter(Boolean).join(" · ") || undefined;
 									}
 									const usePlainText = role === "user" || role === "assistant";
