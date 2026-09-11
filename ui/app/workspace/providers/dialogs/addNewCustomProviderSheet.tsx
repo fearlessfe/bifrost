@@ -25,6 +25,7 @@ const formSchema = z.object({
 	request_path_overrides: z.record(z.string(), z.string().optional()).optional(),
 	is_key_less: z.boolean().optional(),
 	does_not_send_done_marker: z.boolean().optional(),
+	uses_legacy_max_tokens: z.boolean().optional(),
 	allow_private_network: z.boolean().optional(),
 });
 
@@ -88,6 +89,7 @@ export function AddCustomProviderSheetContent({ show = true, onClose, onSave }: 
 			request_path_overrides: undefined,
 			is_key_less: false,
 			does_not_send_done_marker: false,
+			uses_legacy_max_tokens: false,
 			allow_private_network: false,
 		},
 	});
@@ -107,6 +109,7 @@ export function AddCustomProviderSheetContent({ show = true, onClose, onSave }: 
 				request_path_overrides: cleanPathOverrides(data.request_path_overrides),
 				is_key_less: data.is_key_less ?? false,
 				does_not_send_done_marker: data.does_not_send_done_marker ?? false,
+				uses_legacy_max_tokens: data.uses_legacy_max_tokens ?? false,
 			},
 			network_config: {
 				base_url: data.base_url,
@@ -139,6 +142,7 @@ export function AddCustomProviderSheetContent({ show = true, onClose, onSave }: 
 	useEffect(() => {
 		if (isDoneMarkerToggleDisabled) {
 			form.setValue("does_not_send_done_marker", false);
+			form.setValue("uses_legacy_max_tokens", false);
 		}
 	}, [isDoneMarkerToggleDisabled, form]);
 
@@ -288,6 +292,34 @@ export function AddCustomProviderSheetContent({ show = true, onClose, onSave }: 
 												onCheckedChange={field.onChange}
 												disabled={!hasProviderCreateAccess}
 												data-testid="custom-provider-does-not-send-done-marker-switch"
+											/>
+										</div>
+									</FormItem>
+								)}
+							/>
+						)}
+						{!isDoneMarkerToggleDisabled && (
+							<FormField
+								control={form.control}
+								name="uses_legacy_max_tokens"
+								render={({ field }) => (
+									<FormItem>
+										<div className="flex items-center justify-between space-x-2 rounded-lg border p-3">
+											<div className="space-y-0.5">
+												<label htmlFor="uses-legacy-max-tokens" className="text-sm font-medium">
+													Uses Legacy max_tokens?
+												</label>
+												<p className="text-muted-foreground text-sm">
+													Send max_tokens instead of max_completion_tokens on chat completions (for legacy-spec upstreams like GLM)
+												</p>
+											</div>
+											<Switch
+												id="uses-legacy-max-tokens"
+												size="md"
+												checked={field.value}
+												onCheckedChange={field.onChange}
+												disabled={!hasProviderCreateAccess}
+												data-testid="custom-provider-uses-legacy-max-tokens-switch"
 											/>
 										</div>
 									</FormItem>

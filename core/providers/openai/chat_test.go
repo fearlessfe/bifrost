@@ -1706,6 +1706,60 @@ func TestToOpenAIChatRequest_OpencodeUsesLegacyMaxTokensOnWire(t *testing.T) {
 	}
 }
 
+func TestToOpenAIChatRequest_CustomProviderLegacyMaxTokens(t *testing.T) {
+	newReq := func() *schemas.BifrostChatRequest {
+		return &schemas.BifrostChatRequest{
+			Provider: "glm",
+			Model:    "glm-4.6",
+			Input: []schemas.ChatMessage{{
+				Role: schemas.ChatMessageRoleUser,
+				Content: &schemas.ChatMessageContent{
+					ContentStr: schemas.Ptr("hello"),
+				},
+			}},
+			Params: &schemas.ChatParameters{
+				MaxCompletionTokens: schemas.Ptr(512),
+			},
+		}
+	}
+
+	t.Run("opted in remaps to max_tokens", func(t *testing.T) {
+		ctx := schemas.NewBifrostContext(nil, schemas.NoDeadline)
+		ctx.SetValue(schemas.BifrostContextKeyIsCustomProvider, true)
+		ctx.SetValue(schemas.BifrostContextKeyUsesLegacyMaxTokens, true)
+
+		converted := ToOpenAIChatRequest(ctx, newReq())
+		require.NotNil(t, converted)
+
+		wireJSON, err := json.Marshal(converted)
+		require.NoError(t, err)
+
+		var wire map[string]json.RawMessage
+		require.NoError(t, json.Unmarshal(wireJSON, &wire))
+		require.Contains(t, wire, "max_tokens")
+		var maxTokens int
+		require.NoError(t, json.Unmarshal(wire["max_tokens"], &maxTokens))
+		require.Equal(t, 512, maxTokens)
+		require.NotContains(t, wire, "max_completion_tokens")
+	})
+
+	t.Run("custom provider without opt-in keeps max_completion_tokens", func(t *testing.T) {
+		ctx := schemas.NewBifrostContext(nil, schemas.NoDeadline)
+		ctx.SetValue(schemas.BifrostContextKeyIsCustomProvider, true)
+
+		converted := ToOpenAIChatRequest(ctx, newReq())
+		require.NotNil(t, converted)
+
+		wireJSON, err := json.Marshal(converted)
+		require.NoError(t, err)
+
+		var wire map[string]json.RawMessage
+		require.NoError(t, json.Unmarshal(wireJSON, &wire))
+		require.Contains(t, wire, "max_completion_tokens")
+		require.NotContains(t, wire, "max_tokens")
+	})
+}
+
 // When a conversation switches from Gemini to OpenAI, Gemini's thoughtSignature is
 // embedded in the tool call_id as "<baseID>_ts_<sig>" and can exceed OpenAI's 64-char
 // limit. The chat converter must strip it to the base ID on the wire while leaving the

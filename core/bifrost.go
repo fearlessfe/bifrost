@@ -6896,6 +6896,12 @@ func (bifrost *Bifrost) requestWorker(provider schemas.Provider, config *schemas
 		} else {
 			req.Context.ClearValue(schemas.BifrostContextKeyDoesNotSendDoneMarker)
 		}
+		// Same per-attempt stamping for the legacy max_tokens dialect.
+		if config.CustomProviderConfig != nil && config.CustomProviderConfig.UsesLegacyMaxTokens {
+			req.Context.SetValue(schemas.BifrostContextKeyUsesLegacyMaxTokens, true)
+		} else {
+			req.Context.ClearValue(schemas.BifrostContextKeyUsesLegacyMaxTokens)
+		}
 
 		bifrost.endCoreSpan(workerSetupSpan)
 

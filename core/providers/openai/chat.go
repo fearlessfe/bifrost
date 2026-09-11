@@ -168,6 +168,15 @@ func ToOpenAIChatRequest(ctx *schemas.BifrostContext, bifrostReq *schemas.Bifros
 	default:
 		// Check if provider is a custom provider
 		if isCustomProvider, ok := ctx.Value(schemas.BifrostContextKeyIsCustomProvider).(bool); ok && isCustomProvider {
+			// Legacy-spec upstreams (GLM and similar) honor max_tokens and ignore
+			// max_completion_tokens; remap when the custom provider opted in via
+			// custom_provider_config.uses_legacy_max_tokens.
+			if legacy, ok := ctx.Value(schemas.BifrostContextKeyUsesLegacyMaxTokens).(bool); ok && legacy {
+				if openaiReq.MaxCompletionTokens != nil {
+					openaiReq.MaxTokens = openaiReq.MaxCompletionTokens
+					openaiReq.MaxCompletionTokens = nil
+				}
+			}
 			return openaiReq
 		}
 		openaiReq.filterOpenAISpecificParameters(caps)
