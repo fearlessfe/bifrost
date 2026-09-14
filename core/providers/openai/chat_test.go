@@ -1760,6 +1760,62 @@ func TestToOpenAIChatRequest_CustomProviderLegacyMaxTokens(t *testing.T) {
 	})
 }
 
+func TestToOpenAIChatRequest_CustomProviderReasoningEffortRenames(t *testing.T) {
+	newReq := func() *schemas.BifrostChatRequest {
+		return &schemas.BifrostChatRequest{
+			Provider: "glm",
+			Model:    "glm-4.6",
+			Input: []schemas.ChatMessage{{
+				Role: schemas.ChatMessageRoleUser,
+				Content: &schemas.ChatMessageContent{
+					ContentStr: schemas.Ptr("hello"),
+				},
+			}},
+			Params: &schemas.ChatParameters{
+				Reasoning: &schemas.ChatReasoning{Effort: schemas.Ptr("medium")},
+			},
+		}
+	}
+
+	t.Run("configured rename rewrites effort on the wire", func(t *testing.T) {
+		ctx := schemas.NewBifrostContext(nil, schemas.NoDeadline)
+		ctx.SetValue(schemas.BifrostContextKeyIsCustomProvider, true)
+		ctx.SetValue(schemas.BifrostContextKeyReasoningEffortRenames, map[string]string{"medium": "high"})
+
+		bifrostReq := newReq()
+		converted := ToOpenAIChatRequest(ctx, bifrostReq)
+		require.NotNil(t, converted)
+		require.NotNil(t, converted.Reasoning)
+		require.NotNil(t, converted.Reasoning.Effort)
+		require.Equal(t, "high", *converted.Reasoning.Effort)
+		// The caller's request must not be mutated — Reasoning is shared by pointer.
+		require.Equal(t, "medium", *bifrostReq.Params.Reasoning.Effort)
+	})
+
+	t.Run("unmapped effort passes through unchanged", func(t *testing.T) {
+		ctx := schemas.NewBifrostContext(nil, schemas.NoDeadline)
+		ctx.SetValue(schemas.BifrostContextKeyIsCustomProvider, true)
+		ctx.SetValue(schemas.BifrostContextKeyReasoningEffortRenames, map[string]string{"minimal": "low"})
+
+		converted := ToOpenAIChatRequest(ctx, newReq())
+		require.NotNil(t, converted)
+		require.NotNil(t, converted.Reasoning)
+		require.NotNil(t, converted.Reasoning.Effort)
+		require.Equal(t, "medium", *converted.Reasoning.Effort)
+	})
+
+	t.Run("no renames configured leaves effort alone", func(t *testing.T) {
+		ctx := schemas.NewBifrostContext(nil, schemas.NoDeadline)
+		ctx.SetValue(schemas.BifrostContextKeyIsCustomProvider, true)
+
+		converted := ToOpenAIChatRequest(ctx, newReq())
+		require.NotNil(t, converted)
+		require.NotNil(t, converted.Reasoning)
+		require.NotNil(t, converted.Reasoning.Effort)
+		require.Equal(t, "medium", *converted.Reasoning.Effort)
+	})
+}
+
 // When a conversation switches from Gemini to OpenAI, Gemini's thoughtSignature is
 // embedded in the tool call_id as "<baseID>_ts_<sig>" and can exceed OpenAI's 64-char
 // limit. The chat converter must strip it to the base ID on the wire while leaving the

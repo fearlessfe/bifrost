@@ -822,6 +822,7 @@ export const customProviderConfigSchema = z
 		is_key_less: z.boolean().optional(),
 		does_not_send_done_marker: z.boolean().optional(),
 		uses_legacy_max_tokens: z.boolean().optional(),
+		reasoning_effort_renames: z.record(z.string(), z.string()).optional(),
 		allowed_requests: allowedRequestsSchema.optional(),
 		request_path_overrides: z.record(z.string(), z.string().optional()).optional(),
 	})
@@ -845,6 +846,7 @@ export const formCustomProviderConfigSchema = z
 		is_key_less: z.boolean().optional(),
 		does_not_send_done_marker: z.boolean().optional(),
 		uses_legacy_max_tokens: z.boolean().optional(),
+		reasoning_effort_renames: z.record(z.string(), z.string()).optional(),
 		allowed_requests: allowedRequestsSchema.optional(),
 		request_path_overrides: z.record(z.string(), z.string().optional()).optional(),
 	})

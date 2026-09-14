@@ -1,3 +1,4 @@
+import { HeadersTable } from "@/components/ui/headersTable";
 import { Button } from "@/components/ui/button";
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -38,6 +39,7 @@ export function ApiStructureFormFragment({ provider }: Props) {
 			is_key_less: provider.custom_provider_config?.is_key_less ?? false,
 			does_not_send_done_marker: provider.custom_provider_config?.does_not_send_done_marker ?? false,
 			uses_legacy_max_tokens: provider.custom_provider_config?.uses_legacy_max_tokens ?? false,
+			reasoning_effort_renames: provider.custom_provider_config?.reasoning_effort_renames ?? undefined,
 			allowed_requests: {
 				text_completion: provider.custom_provider_config?.allowed_requests?.text_completion ?? true,
 				text_completion_stream: provider.custom_provider_config?.allowed_requests?.text_completion_stream ?? true,
@@ -80,6 +82,7 @@ export function ApiStructureFormFragment({ provider }: Props) {
 					is_key_less: data.is_key_less ?? false,
 					does_not_send_done_marker: data.does_not_send_done_marker ?? false,
 					uses_legacy_max_tokens: data.uses_legacy_max_tokens ?? false,
+					reasoning_effort_renames: data.reasoning_effort_renames,
 					allowed_requests: data.allowed_requests,
 					request_path_overrides: cleanPathOverrides(data.request_path_overrides),
 				},
@@ -213,6 +216,31 @@ export function ApiStructureFormFragment({ provider }: Props) {
 											disabled={!hasUpdateProviderAccess}
 										/>
 									</div>
+								</FormItem>
+							)}
+						/>
+					)}
+					{!isDoneMarkerToggleDisabled && (
+						<FormField
+							control={form.control}
+							name="reasoning_effort_renames"
+							render={({ field }) => (
+								<FormItem>
+									<FormControl>
+										<HeadersTable
+											value={field.value || {}}
+											onChange={field.onChange}
+											keyPlaceholder="OpenAI effort (e.g. medium)"
+											valuePlaceholder="Upstream effort (e.g. high)"
+											label="Reasoning Effort Renames"
+											disabled={!hasUpdateProviderAccess}
+										/>
+									</FormControl>
+									<p className="text-muted-foreground text-sm">
+										Rewrite reasoning effort values for upstreams whose accepted ladder differs from OpenAI&apos;s (e.g. GLM accepts only
+										low/high/max, so map medium → high)
+									</p>
+									<FormMessage />
 								</FormItem>
 							)}
 						/>

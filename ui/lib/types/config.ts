@@ -442,6 +442,7 @@ export interface CustomProviderConfig {
 	is_key_less?: boolean;
 	does_not_send_done_marker?: boolean;
 	uses_legacy_max_tokens?: boolean;
+	reasoning_effort_renames?: Record<string, string>;
 	allowed_requests?: AllowedRequests;
 	request_path_overrides?: Record<string, string>;
 }
