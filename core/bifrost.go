@@ -6983,7 +6983,11 @@ func (bifrost *Bifrost) requestWorker(provider schemas.Provider, config *schemas
 		if cfg := config.CustomProviderConfig; cfg != nil && cfg.BaseProviderType != "" {
 			baseProvider = cfg.BaseProviderType
 		}
-		req.Context.SetValue(schemas.BifrostContextKeyIsCustomProvider, !IsStandardProvider(baseProvider))
+		// Custom-ness is a property of the configured provider, not of the base
+		// provider it wraps: custom providers always carry a CustomProviderConfig,
+		// while baseProvider above resolves to a standard provider (e.g. openai),
+		// which would wrongly report a custom provider as non-custom.
+		req.Context.SetValue(schemas.BifrostContextKeyIsCustomProvider, config.CustomProviderConfig != nil)
 		// Lets downstream converters resolve a custom provider key back to the built-in provider it wraps.
 		req.Context.SetValue(schemas.BifrostContextKeyBaseProviderType, baseProvider)
 		// Re-stamped per attempt so a fallback cannot inherit the previous provider's opt-in.

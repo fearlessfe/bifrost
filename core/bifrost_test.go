@@ -2,7 +2,9 @@ package bifrost
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
@@ -708,6 +710,71 @@ func TestCustomProviderDoesNotSendDoneMarkerEndsParkedStream(t *testing.T) {
 		}
 	case <-time.After(30 * time.Second):
 		t.Fatal("stream never terminated: does_not_send_done_marker did not reach the provider read loop")
+	}
+}
+
+// TestCustomProviderReasoningEffortRenamesReachWire pins the full worker path for
+// custom_provider_config.reasoning_effort_renames: requestWorker must stamp the map
+// onto the request context so the chat converter can rewrite the effort before it
+// hits the wire. The converter-level tests in core/providers/openai/chat_test.go
+// set the context keys directly and cannot catch a broken stamping step — this one
+// goes through a real Bifrost client and inspects what the upstream received.
+func TestCustomProviderReasoningEffortRenamesReachWire(t *testing.T) {
+	bodyCh := make(chan map[string]interface{}, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		var parsed map[string]interface{}
+		if err := json.Unmarshal(body, &parsed); err == nil {
+			select {
+			case bodyCh <- parsed:
+			default:
+			}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"id":"chatcmpl-1","object":"chat.completion","created":1,"model":"glm-4.6",` +
+			`"choices":[{"index":0,"message":{"role":"assistant","content":"hi"},"finish_reason":"stop"}],` +
+			`"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}`))
+	}))
+	defer server.Close()
+
+	const customProvider = schemas.ModelProvider("custom-openai")
+	account := NewMockAccount()
+	account.AddProviderWithBaseURL(customProvider, 1, 1, server.URL)
+	account.configs[customProvider].NetworkConfig.MaxRetries = 0
+	account.SetCustomProviderConfig(customProvider, &schemas.CustomProviderConfig{
+		BaseProviderType:       schemas.OpenAI,
+		ReasoningEffortRenames: map[string]string{"medium": "high"},
+	})
+	account.SetKeysForProvider(customProvider, []schemas.Key{
+		{ID: "custom-key", Value: *schemas.NewSecretVar("sk-custom"), Models: schemas.WhiteList{"*"}, Weight: 100},
+	})
+
+	client := newStreamTestClient(t, account)
+	ctx, cancel := schemas.NewBifrostContextWithCancel(context.Background())
+	defer cancel()
+
+	_, bifrostErr := client.ChatCompletionRequest(ctx, &schemas.BifrostChatRequest{
+		Provider: customProvider,
+		Model:    "glm-4.6",
+		Input: []schemas.ChatMessage{{
+			Role:    schemas.ChatMessageRoleUser,
+			Content: &schemas.ChatMessageContent{ContentStr: Ptr("hi")},
+		}},
+		Params: &schemas.ChatParameters{
+			Reasoning: &schemas.ChatReasoning{Effort: Ptr("medium")},
+		},
+	})
+	if bifrostErr != nil {
+		t.Fatalf("chat request failed: %v", bifrostErr)
+	}
+
+	select {
+	case body := <-bodyCh:
+		if got, _ := body["reasoning_effort"].(string); got != "high" {
+			t.Errorf("expected reasoning_effort renamed to %q on the wire, got %q (body: %v)", "high", got, body)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("mock upstream never received a request")
 	}
 }
 
