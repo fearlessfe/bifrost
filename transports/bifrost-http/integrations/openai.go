@@ -3422,7 +3422,6 @@ func OpenAIRealtimeWebRTCCallsPaths(pathPrefix string) []string {
 func OpenAIRealtimeClientSecretPaths(pathPrefix string) []string {
 	basePaths := []string{
 		"/v1/realtime/client_secrets",
-		"/v1/realtime/sessions",
 	}
 	paths := make([]string, 0, len(basePaths))
 	for _, p := range basePaths {

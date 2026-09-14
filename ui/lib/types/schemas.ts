@@ -1,3 +1,4 @@
+import { validateModelRegex } from "@/components/modelAccess/utils";
 import { KnownProvidersNames } from "@/lib/constants/logs";
 import { isRedacted } from "@/lib/utils/validation";
 import { z } from "zod";
@@ -421,6 +422,7 @@ const aliasConfigObjectSchema = z.object({
 	// Replicate overrides
 	use_deployments_endpoint: z.boolean().optional(),
 	use_anthropic_endpoints: z.boolean().optional(),
+	use_openai_endpoints: z.boolean().optional(),
 });
 
 // The Go server emits the legacy string wire shape (`{"my-alias": "model-id"}`)
@@ -431,6 +433,18 @@ export const aliasConfigSchema = z.preprocess(
 	aliasConfigObjectSchema,
 );
 
+// One allowed_models_patterns / blacklisted_models_patterns / models_patterns
+// entry: a raw RE2 pattern that must compile (mirrors the backend rule). The
+// exact lists next to them hold plain names and "*". The pattern is trimmed
+// before it is validated and before it is submitted: the backend anchors what
+// it stores as "(?i)^(?:<pattern>)$", where kept padding would match nothing.
+export const modelPatternSchema = z
+	.string()
+	.trim()
+	.refine((pattern) => validateModelRegex(pattern) === null, {
+		message: "Invalid regex pattern",
+	});
+
 // Model provider key schema
 export const modelProviderKeySchema = z
 	.object({
@@ -439,6 +453,8 @@ export const modelProviderKeySchema = z
 		value: secretVarSchema.optional(),
 		models: z.array(z.string()).optional().default(["*"]),
 		blacklisted_models: z.array(z.string()).default([]).optional(),
+		models_patterns: z.array(modelPatternSchema).default([]).optional(),
+		blacklisted_models_patterns: z.array(modelPatternSchema).default([]).optional(),
 		weight: z
 			.union([z.number(), z.string()])
 			.transform((val, ctx) => {
@@ -470,6 +486,7 @@ export const modelProviderKeySchema = z
 		github_copilot_key_config: githubCopilotKeyConfigSchema.optional(),
 		use_for_batch_api: z.boolean().optional(),
 		use_anthropic_endpoints: z.boolean().optional(),
+		use_openai_endpoints: z.boolean().optional(),
 		enabled: z.boolean().optional(),
 	})
 	.refine(

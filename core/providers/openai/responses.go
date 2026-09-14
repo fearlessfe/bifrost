@@ -60,17 +60,37 @@ var ProviderFeatures = map[schemas.ModelProvider]ResponsesFeatureSupport{
 	schemas.BedrockMantle: {AdditionalToolsItem: false, ContextManagement: false},
 }
 
-// reservedToolNamespaces lists the namespace-tool names a provider keeps for
-// its own server-side tools. Bedrock rejects a user-defined namespace with one
-// of these names outright on both the bedrock-mantle and bedrock-runtime
-// Responses endpoints: "Invalid Value: 'tools.namespace'. User-defined namespace
-// 'web' collides with an existing tool namespace." (HTTP 400). Codex registers a
-// client-side "web" namespace (web.run) whenever it believes it is talking to
-// OpenAI, which is the case when Bifrost is configured through openai_base_url.
-// Live-verified against openai.gpt-5.6-luna on 2026-09-09.
-var reservedToolNamespaces = map[schemas.ModelProvider]map[string]bool{
-	schemas.Bedrock:       {"web": true, "image_gen": true, "browser": true, "python": true},
-	schemas.BedrockMantle: {"web": true, "image_gen": true, "browser": true, "python": true},
+// reservedToolNamespaces is the hardcoded fallback for the namespace-tool names a
+// provider keeps for its own server-side tools, used when the datasheet row for the
+// (base provider, model) publishes no reserved_tool_namespaces. Bedrock rejects a
+// user-defined namespace with one of these names outright on both the
+// bedrock-mantle and bedrock-runtime Responses endpoints: "Invalid Value:
+// 'tools.namespace'. User-defined namespace 'web' collides with an existing tool
+// namespace." (HTTP 400). Codex registers a client-side "web" namespace (web.run)
+// whenever it believes it is talking to OpenAI, which is the case when Bifrost is
+// configured through openai_base_url. Live-verified against openai.gpt-5.6-luna on
+// 2026-09-09.
+var reservedToolNamespaces = map[schemas.ModelProvider][]string{
+	schemas.Bedrock:       {"web", "image_gen", "browser", "python"},
+	schemas.BedrockMantle: {"web", "image_gen", "browser", "python"},
+}
+
+// resolveReservedToolNamespaces returns the reserved-name set for one attempt:
+// the datasheet row for (toolProvider, capModel) when it publishes one, else the
+// hardcoded fallback. toolProvider is the BASE provider, so a custom provider
+// wrapping Mantle reads the bedrock_mantle row and the bedrock_mantle fallback.
+func resolveReservedToolNamespaces(toolProvider schemas.ModelProvider, capModel string) map[string]bool {
+	names := schemas.ResolveModelCaps(toolProvider, capModel).ReservedToolNamespaces(reservedToolNamespaces[toolProvider])
+	if len(names) == 0 {
+		return nil
+	}
+	reserved := make(map[string]bool, len(names))
+	for _, name := range names {
+		if name != "" {
+			reserved[name] = true
+		}
+	}
+	return reserved
 }
 
 // dropReservedNamespaceTools returns a copy of tools without the namespace tools
@@ -153,7 +173,9 @@ const maxResponsesCacheBreakpoints = 4
 // per-block cache_control through /v1/responses and converts a breakpoint back into
 // an Anthropic one (#6290). OpenAI defined the field for gpt-5.6, where it pairs with
 // request-level prompt_cache_options; Azure and Bedrock Mantle serve the same models
-// through the same wire format, so they inherit it (#6180).
+// through the same wire format, so they inherit it (#6180). Bedrock is listed for the
+// same reason: its OpenAI-compatible surfaces on both hosts speak that wire format, and
+// a request there reports the bedrock key rather than bedrock_mantle.
 //
 // Everything else either accepts cache_control directly or caches implicitly, and for
 // those the serializer's existing strip is the correct behaviour.
@@ -161,7 +183,7 @@ func responsesUsesPromptCacheBreakpoints(provider schemas.ModelProvider, model s
 	switch provider {
 	case schemas.OpenRouter:
 		return true
-	case schemas.OpenAI, schemas.Azure, schemas.BedrockMantle:
+	case schemas.OpenAI, schemas.Azure, schemas.BedrockMantle, schemas.Bedrock:
 		return schemas.IsGPT56Model(model)
 	default:
 		return false
@@ -195,7 +217,7 @@ func responsesHasPromptCacheBreakpoint(messages []schemas.ResponsesMessage) bool
 // that off; mode=explicit does. OpenRouter has no equivalent field and needs none.
 func responsesUsesPromptCacheOptions(provider schemas.ModelProvider, model string) bool {
 	switch provider {
-	case schemas.OpenAI, schemas.Azure, schemas.BedrockMantle:
+	case schemas.OpenAI, schemas.Azure, schemas.BedrockMantle, schemas.Bedrock:
 		return schemas.IsGPT56Model(model)
 	default:
 		return false
@@ -607,6 +629,21 @@ func ToOpenAIResponsesRequest(ctx *schemas.BifrostContext, bifrostReq *schemas.B
 				req.ResponsesParameters.Reasoning.Summary = nil
 			}
 
+			// Bedrock's OpenAI-compatible surfaces accept only "auto". They answer
+			// "concise" and "detailed" with a 400 ("Unsupported parameter:
+			// 'reasoning.summary' is not supported with the ... model") even though the
+			// schema advertises all three, on both bedrock-runtime and bedrock-mantle.
+			// The Anthropic converter pins "detailed" for every Claude Code request, so
+			// without this each such session fails on its first message. Narrow to a
+			// summary the target can serve rather than dropping it: the caller asked to
+			// see reasoning, and "auto" is the only way to say yes here.
+			if summary := req.ResponsesParameters.Reasoning.Summary; summary != nil && *summary != "auto" {
+				switch schemas.ResolveBaseProvider(ctx, bifrostReq.Provider) {
+				case schemas.Bedrock, schemas.BedrockMantle:
+					req.ResponsesParameters.Reasoning.Summary = schemas.Ptr("auto")
+				}
+			}
+
 			// Handle xAI-specific parameter filtering
 			// Strip reasoning_effort only for the models known to reject it; current-generation
 			// models (grok-4.5, grok-4.6, grok-4.20-*) accept it.
@@ -657,9 +694,10 @@ func ToOpenAIResponsesRequest(ctx *schemas.BifrostContext, bifrostReq *schemas.B
 	// the hoist so additional_tools namespaces get the same treatment, and before
 	// filterUnsupportedTools so a substituted web_search goes through its copy path.
 	// Match on the base provider: a custom provider built on bedrock reports its own
-	// key, which the map does not know, so the reserved namespace would reach AWS.
+	// key, which neither the datasheet nor the fallback map knows, so the reserved
+	// namespace would reach AWS.
 	toolProvider := schemas.ResolveBaseProvider(ctx, bifrostReq.Provider)
-	if reserved := reservedToolNamespaces[toolProvider]; len(reserved) > 0 && len(req.Tools) > 0 {
+	if reserved := resolveReservedToolNamespaces(toolProvider, capModel); len(reserved) > 0 && len(req.Tools) > 0 {
 		substitute := toolProvider == schemas.BedrockMantle && caps.SupportsWebSearch(true)
 		req.Tools = dropReservedNamespaceTools(req.Tools, reserved, substitute)
 	}
