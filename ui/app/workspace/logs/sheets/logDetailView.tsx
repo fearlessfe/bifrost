@@ -446,22 +446,22 @@ const isContainerOperation = (object: string) => {
 };
 
 const statusPillStyles: Record<string, string> = {
-	success: "bg-green-50 text-green-700 border-green-200 dark:bg-green-950/40 dark:text-green-400 dark:border-green-900",
-	error: "bg-red-50 text-red-700 border-red-200 dark:bg-red-950/40 dark:text-red-400 dark:border-red-900",
+	success: "border-chart-success/30 bg-chart-success/10 text-chart-success-ink",
+	error: "border-chart-error/30 bg-chart-error/10 text-chart-error-ink",
 	processing: "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/40 dark:text-blue-400 dark:border-blue-900",
 	cancelled: "bg-gray-50 text-gray-700 border-gray-200 dark:bg-gray-900/40 dark:text-gray-400 dark:border-gray-800",
 };
 const statusDotStyles: Record<string, string> = {
-	success: "bg-green-500",
-	error: "bg-red-500",
+	success: "bg-chart-success",
+	error: "bg-chart-error",
 	processing: "bg-blue-500",
 	cancelled: "bg-gray-400",
 };
 
 const batchStatusBadgeStyles: Record<string, string> = {
-	completed: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
-	ended: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
-	failed: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200",
+	completed: "bg-chart-success/15 text-chart-success-ink",
+	ended: "bg-chart-success/15 text-chart-success-ink",
+	failed: "bg-chart-error/15 text-chart-error-ink",
 	expired: "bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-300",
 	cancelled: "bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-300",
 	deleted: "bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-300",
@@ -484,13 +484,12 @@ function StatusPill({ status }: { status: Status }) {
 
 // Colors an HTTP status code badge by response class.
 function statusCodeBadgeClass(code: number): string {
-	if (code >= 200 && code < 300)
-		return "bg-green-50 text-green-700 border-green-200 dark:bg-green-950/40 dark:text-green-400 dark:border-green-900";
+	if (code >= 200 && code < 300) return "border-chart-success/30 bg-chart-success/10 text-chart-success-ink";
 	if (code >= 300 && code < 400)
 		return "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/40 dark:text-blue-400 dark:border-blue-900";
 	if (code >= 400 && code < 500)
 		return "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-400 dark:border-amber-900";
-	return "bg-red-50 text-red-700 border-red-200 dark:bg-red-950/40 dark:text-red-400 dark:border-red-900";
+	return "border-chart-error/30 bg-chart-error/10 text-chart-error-ink";
 }
 
 function HeroStat({
@@ -1159,6 +1158,9 @@ export function LogDetailView({
 	const complexityRouting = deriveComplexityRouting(log);
 	const isPassthrough = isPassthroughOperation(log.object);
 	const isRealtimeTurn = log.object === "realtime.turn";
+	const isRealtimeTranscription =
+		isRealtimeTurn && log.metadata?.realtime_event_type === "conversation.item.input_audio_transcription.completed";
+	const audioSeconds = log.token_usage?.audio_seconds;
 	const isBatch = isBatchOperation(log.object);
 	const batchDebug = log.batch_debug;
 	// Set on both the submission row and the aggregate cost row a settlement writes;
@@ -1592,21 +1594,25 @@ export function LogDetailView({
 						hasRightBorder
 					/>
 					<HeroStat
-						label="Tokens in / out"
+						label={audioSeconds != null ? "Audio duration" : "Tokens in / out"}
 						mono
 						value={
-							log.token_usage
-								? `${formatCompactNumber(log.token_usage.prompt_tokens ?? 0)} / ${formatCompactNumber(log.token_usage.completion_tokens ?? 0)}`
-								: "—"
+							audioSeconds != null
+								? `${audioSeconds}s`
+								: log.token_usage
+									? `${formatCompactNumber(log.token_usage.prompt_tokens ?? 0)} / ${formatCompactNumber(log.token_usage.completion_tokens ?? 0)}`
+									: "—"
 						}
 						sub={
-							log.token_usage
-								? `total ${formatCompactNumber(log.token_usage.total_tokens ?? 0)}${
-										log.token_usage.completion_tokens_details?.reasoning_tokens
-											? ` · reasoning ${formatCompactNumber(log.token_usage.completion_tokens_details.reasoning_tokens)}`
-											: ""
-									}`
-								: "—"
+							audioSeconds != null
+								? "duration billed"
+								: log.token_usage
+									? `total ${formatCompactNumber(log.token_usage.total_tokens ?? 0)}${
+											log.token_usage.completion_tokens_details?.reasoning_tokens
+												? ` · reasoning ${formatCompactNumber(log.token_usage.completion_tokens_details.reasoning_tokens)}`
+												: ""
+										}`
+									: "—"
 						}
 						hasRightBorder
 					/>
@@ -1614,16 +1620,20 @@ export function LogDetailView({
 						label="Cost"
 						value={log.cost != null ? formatCost(log.cost) : "—"}
 						sub={
-							log.cost != null && log.token_usage?.total_tokens
-								? `≈ ${((log.cost / log.token_usage.total_tokens) * 1000).toFixed(6)}＄ per 1k`
-								: ""
+							log.cost != null && audioSeconds
+								? `≈ ${(log.cost / audioSeconds).toFixed(6)}＄ per second`
+								: log.cost != null && log.token_usage?.total_tokens
+									? `≈ ${((log.cost / log.token_usage.total_tokens) * 1000).toFixed(6)}＄ per 1k`
+									: ""
 						}
 						hasRightBorder
 					/>
 					{isRealtimeTurn ? (
 						<HeroStat
-							label="Voice"
-							value={log.metadata?.realtime_voice ? String(log.metadata.realtime_voice) : "\u2014"}
+							label={isRealtimeTranscription ? "Type" : "Voice"}
+							value={
+								isRealtimeTranscription ? "Transcription" : log.metadata?.realtime_voice ? String(log.metadata.realtime_voice) : "\u2014"
+							}
 							sub={log.metadata?.realtime_transport ? formatRealtimeTransport(log.metadata.realtime_transport) : ""}
 						/>
 					) : (
@@ -3618,7 +3628,7 @@ export function LogDetailView({
 													{record.fail_reason ? (
 														<span className="text-destructive">{record.fail_reason}</span>
 													) : (
-														<span className="text-green-600 dark:text-green-400">success</span>
+														<span className="text-chart-success-ink">success</span>
 													)}
 												</td>
 											</tr>
