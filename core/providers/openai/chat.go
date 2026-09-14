@@ -177,6 +177,19 @@ func ToOpenAIChatRequest(ctx *schemas.BifrostContext, bifrostReq *schemas.Bifros
 					openaiReq.MaxCompletionTokens = nil
 				}
 			}
+			// Upstreams whose accepted effort ladder differs from OpenAI's (GLM
+			// accepts only low/high/max) get the requested value rewritten per
+			// custom_provider_config.reasoning_effort_renames. Reasoning is a
+			// pointer shared with the caller's params — copy before writing.
+			if renames, ok := ctx.Value(schemas.BifrostContextKeyReasoningEffortRenames).(map[string]string); ok && len(renames) > 0 {
+				if openaiReq.Reasoning != nil && openaiReq.Reasoning.Effort != nil {
+					if renamed, hit := renames[*openaiReq.Reasoning.Effort]; hit && renamed != *openaiReq.Reasoning.Effort {
+						reasoningCopy := *openaiReq.Reasoning
+						reasoningCopy.Effort = schemas.Ptr(renamed)
+						openaiReq.Reasoning = &reasoningCopy
+					}
+				}
+			}
 			return openaiReq
 		}
 		openaiReq.filterOpenAISpecificParameters(caps)

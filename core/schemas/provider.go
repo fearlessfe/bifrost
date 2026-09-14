@@ -539,6 +539,10 @@ type CustomProviderConfig struct {
 	RequestPathOverrides  map[RequestType]string `json:"request_path_overrides,omitempty"` // Mapping of request type to its custom path which will override the default path of the provider (not allowed for Bedrock)
 	DoesNotSendDoneMarker bool                   `json:"does_not_send_done_marker"`        // Upstream ends its SSE stream after finish_reason without sending data: [DONE]
 	UsesLegacyMaxTokens   bool                   `json:"uses_legacy_max_tokens,omitempty"` // Upstream follows the legacy OpenAI spec: send max_tokens instead of max_completion_tokens on chat completions
+	// ReasoningEffortRenames rewrites reasoning effort values on chat completions
+	// egress, for upstreams whose accepted ladder differs from OpenAI's (e.g. GLM
+	// accepts only low/high/max, so {"medium": "high"}).
+	ReasoningEffortRenames map[string]string `json:"reasoning_effort_renames,omitempty"`
 }
 
 // IsOperationAllowed checks if a specific operation is allowed for this custom provider

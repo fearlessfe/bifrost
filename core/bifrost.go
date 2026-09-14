@@ -6902,6 +6902,12 @@ func (bifrost *Bifrost) requestWorker(provider schemas.Provider, config *schemas
 		} else {
 			req.Context.ClearValue(schemas.BifrostContextKeyUsesLegacyMaxTokens)
 		}
+		// Same per-attempt stamping for reasoning effort renames.
+		if config.CustomProviderConfig != nil && len(config.CustomProviderConfig.ReasoningEffortRenames) > 0 {
+			req.Context.SetValue(schemas.BifrostContextKeyReasoningEffortRenames, config.CustomProviderConfig.ReasoningEffortRenames)
+		} else {
+			req.Context.ClearValue(schemas.BifrostContextKeyReasoningEffortRenames)
+		}
 
 		bifrost.endCoreSpan(workerSetupSpan)
 

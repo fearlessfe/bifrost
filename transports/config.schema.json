@@ -8611,6 +8611,13 @@
           "type": "boolean",
           "description": "Whether the provider follows the legacy OpenAI spec: send max_tokens instead of max_completion_tokens on chat completions"
         },
+        "reasoning_effort_renames": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Rewrite reasoning effort values on chat completions egress for upstreams whose accepted ladder differs from OpenAI's (e.g. {\"medium\": \"high\"} for GLM's low/high/max)"
+        },
         "base_provider_type": {
           "type": "string",
           "enum": [

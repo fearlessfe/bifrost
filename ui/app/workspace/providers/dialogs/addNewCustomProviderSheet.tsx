@@ -1,4 +1,5 @@
 import { Button } from "@/components/ui/button";
+import { HeadersTable } from "@/components/ui/headersTable";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -26,6 +27,7 @@ const formSchema = z.object({
 	is_key_less: z.boolean().optional(),
 	does_not_send_done_marker: z.boolean().optional(),
 	uses_legacy_max_tokens: z.boolean().optional(),
+	reasoning_effort_renames: z.record(z.string(), z.string()).optional(),
 	allow_private_network: z.boolean().optional(),
 });
 
@@ -90,6 +92,7 @@ export function AddCustomProviderSheetContent({ show = true, onClose, onSave }: 
 			is_key_less: false,
 			does_not_send_done_marker: false,
 			uses_legacy_max_tokens: false,
+			reasoning_effort_renames: undefined,
 			allow_private_network: false,
 		},
 	});
@@ -110,6 +113,7 @@ export function AddCustomProviderSheetContent({ show = true, onClose, onSave }: 
 				is_key_less: data.is_key_less ?? false,
 				does_not_send_done_marker: data.does_not_send_done_marker ?? false,
 				uses_legacy_max_tokens: data.uses_legacy_max_tokens ?? false,
+				reasoning_effort_renames: data.reasoning_effort_renames,
 			},
 			network_config: {
 				base_url: data.base_url,
@@ -143,6 +147,7 @@ export function AddCustomProviderSheetContent({ show = true, onClose, onSave }: 
 		if (isDoneMarkerToggleDisabled) {
 			form.setValue("does_not_send_done_marker", false);
 			form.setValue("uses_legacy_max_tokens", false);
+			form.setValue("reasoning_effort_renames", undefined);
 		}
 	}, [isDoneMarkerToggleDisabled, form]);
 
@@ -322,6 +327,31 @@ export function AddCustomProviderSheetContent({ show = true, onClose, onSave }: 
 												data-testid="custom-provider-uses-legacy-max-tokens-switch"
 											/>
 										</div>
+									</FormItem>
+								)}
+							/>
+						)}
+						{!isDoneMarkerToggleDisabled && (
+							<FormField
+								control={form.control}
+								name="reasoning_effort_renames"
+								render={({ field }) => (
+									<FormItem>
+										<FormControl>
+											<HeadersTable
+												value={field.value || {}}
+												onChange={field.onChange}
+												keyPlaceholder="OpenAI effort (e.g. medium)"
+												valuePlaceholder="Upstream effort (e.g. high)"
+												label="Reasoning Effort Renames"
+												disabled={!hasProviderCreateAccess}
+											/>
+										</FormControl>
+										<p className="text-muted-foreground text-sm">
+											Rewrite reasoning effort values for upstreams whose accepted ladder differs from OpenAI&apos;s (e.g. GLM accepts only
+											low/high/max, so map medium → high)
+										</p>
+										<FormMessage />
 									</FormItem>
 								)}
 							/>
