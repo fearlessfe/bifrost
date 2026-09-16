@@ -735,6 +735,13 @@ func (h *LoggingHandler) getLogs(ctx *fasthttp.RequestCtx) {
 			filters.RootsOnly = val
 		}
 	}
+	// lite=true drops the input payload columns (input_history and media inputs)
+	// from the list projection; detail lookups still serve the full row.
+	if lite := string(ctx.QueryArgs().Peek("lite")); lite != "" {
+		if val, err := strconv.ParseBool(lite); err == nil && val {
+			filters.ExcludeInputs = true
+		}
+	}
 	parseMetadataFilters(ctx, filters)
 
 	// Extract pagination parameters

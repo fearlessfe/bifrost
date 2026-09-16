@@ -81853,6 +81853,15 @@
             }
           },
           {
+            "name": "lite",
+            "in": "query",
+            "description": "When true, the list projection returns NULL for the input payload fields (input_history, responses_input_history, speech_input, transcription_input, image_generation_input, video_generation_input), so metadata-only consumers never pay for large input payloads. Defaults to false; the detail endpoint GET /api/logs/{id} always returns the full row.",
+            "schema": {
+              "type": "boolean",
+              "default": false
+            }
+          },
+          {
             "name": "limit",
             "in": "query",
             "description": "Number of logs to return (default 50, max 1000)",

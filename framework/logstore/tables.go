@@ -87,6 +87,12 @@ type SearchFilters struct {
 	// "use the store default" (defaultMaxRankingsLimit); a value <= 0 means
 	// "return every ranked entity", which is what the dashboard export uses.
 	RankingLimit *int `json:"ranking_limit,omitempty"`
+	// ExcludeInputs is a list-projection switch, not a WHERE filter: when true,
+	// SearchLogs returns NULL for input_history, responses_input_history, and the
+	// media input columns (speech_input, transcription_input,
+	// image_generation_input, video_generation_input). Only affects the list
+	// projection; detail lookups (FindByID) are unchanged.
+	ExcludeInputs bool `json:"exclude_inputs,omitempty"`
 }
 
 // EffectiveRankingLimit resolves the ranking row cap: the store default when

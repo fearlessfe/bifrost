@@ -827,7 +827,7 @@ func (s *RDBLogStore) bulkUpdateCostPostgres(ctx context.Context, updates map[st
 
 // SearchLogs searches for logs in the database without calculating statistics.
 func (s *RDBLogStore) SearchLogs(ctx context.Context, filters SearchFilters, pagination PaginationOptions) (*SearchResult, error) {
-	return s.searchLogs(ctx, filters, pagination, s.listSelectColumns())
+	return s.searchLogs(ctx, filters, pagination, s.listSelectColumns(filters.ExcludeInputs))
 }
 
 // SearchLogsForBilling searches with the billing projection.
@@ -1103,7 +1103,7 @@ func (s *RDBLogStore) GetSessionLogs(ctx context.Context, sessionID string, pagi
 		dataQuery := baseQuery.Session(&gorm.Session{}).
 			WithContext(gCtx).
 			Order(orderClause).
-			Select(s.listSelectColumns()).
+			Select(s.listSelectColumns(false)).
 			Limit(limit)
 		if pagination.Offset > 0 {
 			dataQuery = dataQuery.Offset(pagination.Offset)
@@ -1224,8 +1224,23 @@ func normalizeAggregateTimestamp(value any) string {
 //
 // Realtime turn rows are kept intact because the logs table renders them as a
 // combined Tool/User/Assistant summary and needs the full turn context.
-func (s *RDBLogStore) listSelectColumns() string {
-	baseCols := strings.Join([]string{
+//
+// When excludeInputs is true the input payload columns (input_history,
+// responses_input_history, speech_input, transcription_input,
+// image_generation_input, video_generation_input) are projected as NULL on
+// every dialect, so list consumers that only need metadata never pay for
+// potentially large input payloads (e.g. base64 audio/image inputs).
+func (s *RDBLogStore) listSelectColumns(excludeInputs bool) string {
+	inputCols := []string{
+		"speech_input", "transcription_input", "image_generation_input", "video_generation_input",
+	}
+	if excludeInputs {
+		inputCols = []string{
+			"NULL AS speech_input", "NULL AS transcription_input",
+			"NULL AS image_generation_input", "NULL AS video_generation_input",
+		}
+	}
+	baseCols := append([]string{
 		"id", "parent_request_id", "timestamp", "object_type", "provider", "model", "alias",
 		"canonical_model_name", "alias_model_family", "server_side_fallback_model", "served_model",
 		"number_of_retries", "fallback_index",
@@ -1238,7 +1253,7 @@ func (s *RDBLogStore) listSelectColumns() string {
 		"team_ids", "team_names", "customer_ids", "customer_names", "business_unit_ids", "business_unit_names",
 		"project_id", "project_name",
 		"user_agent", "app",
-		"speech_input", "transcription_input", "image_generation_input", "video_generation_input",
+	}, append(inputCols,
 		// error_details is intentionally excluded from the list select: for status=error
 		// rows it can carry the provider's full (unbounded) error payload, and 25+ such
 		// rows can push the /api/logs response past Cloud Run's 32MB body limit (500s).
@@ -1258,7 +1273,13 @@ func (s *RDBLogStore) listSelectColumns() string {
 		"has_object", "content_hidden",
 		"service_tier", "speed", "inference_geo",
 		"created_at",
-	}, ", ")
+	)...)
+	base := strings.Join(baseCols, ", ")
+
+	if excludeInputs {
+		return base + ", NULL AS input_history, NULL AS responses_input_history, " +
+			`CASE WHEN object_type = 'realtime.turn' THEN output_message ELSE NULL END AS output_message`
+	}
 
 	var inputHistoryExpr, responsesInputExpr, outputMessageExpr string
 	switch s.db.Dialector.Name() {
@@ -1305,7 +1326,7 @@ func (s *RDBLogStore) listSelectColumns() string {
 		outputMessageExpr = `CASE WHEN object_type = 'realtime.turn' THEN output_message ELSE NULL END AS output_message`
 	}
 
-	return baseCols + ", " + inputHistoryExpr + ", " + responsesInputExpr + ", " + outputMessageExpr
+	return base + ", " + inputHistoryExpr + ", " + responsesInputExpr + ", " + outputMessageExpr
 }
 
 // billingPayloadColumns are the payload columns cost recomputation reads to recover a
