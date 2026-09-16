@@ -39,7 +39,7 @@ func newProjectionTestStore(t *testing.T) *RDBLogStore {
 }
 
 func TestListProjectionExcludesOutputPayloadBlobs(t *testing.T) {
-	cols := newProjectionTestStore(t).listSelectColumns()
+	cols := newProjectionTestStore(t).listSelectColumns(false)
 	for blob := range billingPayloadColumns {
 		if containsColumn(cols, blob) {
 			t.Fatalf("listSelectColumns must not select %q: it serves /api/logs, where unbounded "+
@@ -53,7 +53,7 @@ func TestListProjectionExcludesOutputPayloadBlobs(t *testing.T) {
 // DeserializeFields, and has_object / content_hidden decide whether a row can be
 // hydrated at all. They are cheap scalars, so the list path carries them too.
 func TestListProjectionIncludesBillingScalars(t *testing.T) {
-	cols := newProjectionTestStore(t).listSelectColumns()
+	cols := newProjectionTestStore(t).listSelectColumns(false)
 	for _, scalar := range []string{
 		"cached_read_tokens",
 		"has_object",

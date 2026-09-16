@@ -144,3 +144,62 @@ func TestJoinToolCallNamesCapKeepsFirstSeenPrefix(t *testing.T) {
 	exact := strings.Repeat("y", maxToolCallNamesBytes-3)
 	require.Equal(t, exact+",ab", joinToolCallNames([]string{exact, "ab"}))
 }
+
+// TestSearchLogsListSelectOmitsInputsWithExcludeInputs verifies the list
+// projection drops the input payload columns when ExcludeInputs is set, while
+// leaving metadata columns and the default (non-excluded) projection intact.
+func TestSearchLogsListSelectOmitsInputsWithExcludeInputs(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open("file:"+t.Name()+"?mode=memory&cache=shared"), &gorm.Config{
+		Logger: logger.Default.LogMode(logger.Silent),
+	})
+	require.NoError(t, err)
+	sqlDB, err := db.DB()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = sqlDB.Close() })
+	require.NoError(t, db.AutoMigrate(&Log{}))
+
+	row := Log{
+		ID:                    "with-inputs",
+		Timestamp:             time.Now(),
+		Status:                "success",
+		Provider:              "openai",
+		Model:                 "gpt-4o",
+		InputHistory:          `[{"role":"system","content":"sys"},{"role":"user","content":"hi"}]`,
+		ResponsesInputHistory: `[{"type":"message","role":"user"}]`,
+		SpeechInput:           `{"input":"hello"}`,
+		TranscriptionInput:    `{"file":"a.wav"}`,
+		ImageGenerationInput:  `{"prompt":"cat"}`,
+		VideoGenerationInput:  `{"prompt":"run"}`,
+	}
+	require.NoError(t, db.Create(&row).Error)
+	store := &RDBLogStore{db: db}
+
+	page := PaginationOptions{Limit: 10, SortBy: "timestamp", Order: "desc"}
+
+	res, err := store.SearchLogs(context.Background(), SearchFilters{}, page)
+	require.NoError(t, err)
+	require.Len(t, res.Logs, 1)
+	// Default list projection: history is truncated to the last message and the
+	// media input columns are returned in full.
+	require.Len(t, res.Logs[0].InputHistoryParsed, 1)
+	require.NotEmpty(t, res.Logs[0].ResponsesInputHistoryParsed)
+	require.NotEmpty(t, res.Logs[0].SpeechInput)
+	require.NotEmpty(t, res.Logs[0].TranscriptionInput)
+	require.NotEmpty(t, res.Logs[0].ImageGenerationInput)
+	require.NotEmpty(t, res.Logs[0].VideoGenerationInput)
+
+	res, err = store.SearchLogs(context.Background(), SearchFilters{ExcludeInputs: true}, page)
+	require.NoError(t, err)
+	require.Len(t, res.Logs, 1)
+	require.Empty(t, res.Logs[0].InputHistoryParsed)
+	require.Empty(t, res.Logs[0].ResponsesInputHistoryParsed)
+	require.Empty(t, res.Logs[0].InputHistory)
+	require.Empty(t, res.Logs[0].ResponsesInputHistory)
+	require.Empty(t, res.Logs[0].SpeechInput)
+	require.Empty(t, res.Logs[0].TranscriptionInput)
+	require.Empty(t, res.Logs[0].ImageGenerationInput)
+	require.Empty(t, res.Logs[0].VideoGenerationInput)
+	// Metadata is unaffected.
+	require.Equal(t, "openai", res.Logs[0].Provider)
+	require.Equal(t, "gpt-4o", res.Logs[0].Model)
+}
