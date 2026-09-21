@@ -531,6 +531,7 @@ func (ar *AllowedRequests) IsOperationAllowed(operation RequestType) bool {
 	}
 }
 
+// CustomProviderConfig represent custom provider config
 type CustomProviderConfig struct {
 	CustomProviderKey     string                 `json:"-"`                                // Custom provider key, internally set by Bifrost
 	IsKeyLess             bool                   `json:"is_key_less"`                      // Whether the custom provider requires a key (not allowed for Bedrock)
@@ -543,6 +544,7 @@ type CustomProviderConfig struct {
 	// egress, for upstreams whose accepted ladder differs from OpenAI's (e.g. GLM
 	// accepts only low/high/max, so {"medium": "high"}).
 	ReasoningEffortRenames map[string]string `json:"reasoning_effort_renames,omitempty"`
+	WaitForUsage           bool              `json:"wait_for_usage"` // With DoesNotSendDoneMarker, keep reading past finish_reason so the trailing usage-only chunk is not dropped (#7143). A silent upstream then ends on network_config.stream_idle_timeout_in_seconds
 }
 
 // IsOperationAllowed checks if a specific operation is allowed for this custom provider

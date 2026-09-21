@@ -1,4 +1,3 @@
-import { validateModelRegex } from "@/components/modelAccess/utils";
 import { KnownProvidersNames } from "@/lib/constants/logs";
 import { isRedacted } from "@/lib/utils/validation";
 import { z } from "zod";
@@ -433,18 +432,6 @@ export const aliasConfigSchema = z.preprocess(
 	aliasConfigObjectSchema,
 );
 
-// One allowed_models_patterns / blacklisted_models_patterns / models_patterns
-// entry: a raw RE2 pattern that must compile (mirrors the backend rule). The
-// exact lists next to them hold plain names and "*". The pattern is trimmed
-// before it is validated and before it is submitted: the backend anchors what
-// it stores as "(?i)^(?:<pattern>)$", where kept padding would match nothing.
-export const modelPatternSchema = z
-	.string()
-	.trim()
-	.refine((pattern) => validateModelRegex(pattern) === null, {
-		message: "Invalid regex pattern",
-	});
-
 // Model provider key schema
 export const modelProviderKeySchema = z
 	.object({
@@ -453,8 +440,6 @@ export const modelProviderKeySchema = z
 		value: secretVarSchema.optional(),
 		models: z.array(z.string()).optional().default(["*"]),
 		blacklisted_models: z.array(z.string()).default([]).optional(),
-		models_patterns: z.array(modelPatternSchema).default([]).optional(),
-		blacklisted_models_patterns: z.array(modelPatternSchema).default([]).optional(),
 		weight: z
 			.union([z.number(), z.string()])
 			.transform((val, ctx) => {
@@ -840,6 +825,7 @@ export const customProviderConfigSchema = z
 		does_not_send_done_marker: z.boolean().optional(),
 		uses_legacy_max_tokens: z.boolean().optional(),
 		reasoning_effort_renames: z.record(z.string(), z.string()).optional(),
+		wait_for_usage: z.boolean().optional(),
 		allowed_requests: allowedRequestsSchema.optional(),
 		request_path_overrides: z.record(z.string(), z.string().optional()).optional(),
 	})
@@ -864,6 +850,7 @@ export const formCustomProviderConfigSchema = z
 		does_not_send_done_marker: z.boolean().optional(),
 		uses_legacy_max_tokens: z.boolean().optional(),
 		reasoning_effort_renames: z.record(z.string(), z.string()).optional(),
+		wait_for_usage: z.boolean().optional(),
 		allowed_requests: allowedRequestsSchema.optional(),
 		request_path_overrides: z.record(z.string(), z.string().optional()).optional(),
 	})
@@ -1279,6 +1266,7 @@ export const prometheusFormSchema = z
 	.object({
 		metrics_enabled: z.boolean().default(true),
 		overhead_breakdown_enabled: z.boolean().default(false),
+		user_labels_enabled: z.boolean().default(false),
 		push_gateway_enabled: z.boolean().default(false),
 		prometheus_config: prometheusConfigSchema,
 	})

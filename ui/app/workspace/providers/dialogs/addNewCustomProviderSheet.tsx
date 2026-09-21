@@ -28,6 +28,7 @@ const formSchema = z.object({
 	does_not_send_done_marker: z.boolean().optional(),
 	uses_legacy_max_tokens: z.boolean().optional(),
 	reasoning_effort_renames: z.record(z.string(), z.string()).optional(),
+	wait_for_usage: z.boolean().optional(),
 	allow_private_network: z.boolean().optional(),
 });
 
@@ -93,6 +94,7 @@ export function AddCustomProviderSheetContent({ show = true, onClose, onSave }: 
 			does_not_send_done_marker: false,
 			uses_legacy_max_tokens: false,
 			reasoning_effort_renames: undefined,
+			wait_for_usage: false,
 			allow_private_network: false,
 		},
 	});
@@ -114,6 +116,7 @@ export function AddCustomProviderSheetContent({ show = true, onClose, onSave }: 
 				does_not_send_done_marker: data.does_not_send_done_marker ?? false,
 				uses_legacy_max_tokens: data.uses_legacy_max_tokens ?? false,
 				reasoning_effort_renames: data.reasoning_effort_renames,
+				wait_for_usage: data.wait_for_usage ?? false,
 			},
 			network_config: {
 				base_url: data.base_url,
@@ -142,6 +145,9 @@ export function AddCustomProviderSheetContent({ show = true, onClose, onSave }: 
 	const isKeyLessDisabled = baseFormat === "bedrock";
 	// Only the OpenAI stream loops read this flag; every other base format ignores it.
 	const isDoneMarkerToggleDisabled = baseFormat !== "openai";
+	// wait_for_usage only has meaning once the stream ends on finish_reason, so the
+	// toggle is nested under does_not_send_done_marker rather than offered on its own.
+	const doesNotSendDoneMarker = form.watch("does_not_send_done_marker");
 
 	useEffect(() => {
 		if (isDoneMarkerToggleDisabled) {
@@ -150,6 +156,14 @@ export function AddCustomProviderSheetContent({ show = true, onClose, onSave }: 
 			form.setValue("reasoning_effort_renames", undefined);
 		}
 	}, [isDoneMarkerToggleDisabled, form]);
+
+	// Clear the nested flag whenever its parent goes away: the provider update replaces
+	// custom_provider_config wholesale, so a stale true would otherwise be persisted.
+	useEffect(() => {
+		if (isDoneMarkerToggleDisabled || !doesNotSendDoneMarker) {
+			form.setValue("wait_for_usage", false);
+		}
+	}, [isDoneMarkerToggleDisabled, doesNotSendDoneMarker, form]);
 
 	return (
 		<>
@@ -228,7 +242,7 @@ export function AddCustomProviderSheetContent({ show = true, onClose, onSave }: 
 							name="allow_private_network"
 							render={({ field }) => (
 								<FormItem>
-									<div className="flex items-center justify-between space-x-2 rounded-lg border p-3">
+									<div className="bg-muted/50 flex items-center justify-between space-x-2 rounded-sm border p-3">
 										<div className="space-y-0.5">
 											<label htmlFor="allow-private-network" className="text-sm font-medium">
 												Allow Private Network
@@ -255,7 +269,7 @@ export function AddCustomProviderSheetContent({ show = true, onClose, onSave }: 
 								name="is_key_less"
 								render={({ field }) => (
 									<FormItem>
-										<div className="flex items-center justify-between space-x-2 rounded-lg border p-3">
+										<div className="bg-muted/50 flex items-center justify-between space-x-2 rounded-sm border p-3">
 											<div className="space-y-0.5">
 												<label htmlFor="drop-excess-requests" className="text-sm font-medium">
 													Is Keyless?
@@ -281,7 +295,7 @@ export function AddCustomProviderSheetContent({ show = true, onClose, onSave }: 
 								name="does_not_send_done_marker"
 								render={({ field }) => (
 									<FormItem>
-										<div className="flex items-center justify-between space-x-2 rounded-lg border p-3">
+										<div className="bg-muted/50 flex items-center justify-between space-x-2 rounded-sm border p-3">
 											<div className="space-y-0.5">
 												<label htmlFor="does-not-send-done-marker" className="text-sm font-medium">
 													Does Not Send [DONE] Marker?
@@ -325,6 +339,35 @@ export function AddCustomProviderSheetContent({ show = true, onClose, onSave }: 
 												onCheckedChange={field.onChange}
 												disabled={!hasProviderCreateAccess}
 												data-testid="custom-provider-uses-legacy-max-tokens-switch"
+											/>
+										</div>
+									</FormItem>
+								)}
+							/>
+						)}
+						{!isDoneMarkerToggleDisabled && doesNotSendDoneMarker && (
+							<FormField
+								control={form.control}
+								name="wait_for_usage"
+								render={({ field }) => (
+									<FormItem>
+										<div className="bg-muted/50 flex items-center justify-between space-x-2 rounded-sm border p-3">
+											<div className="space-y-0.5">
+												<label htmlFor="wait-for-usage" className="text-sm font-medium">
+													Wait For Trailing Usage Chunk?
+												</label>
+												<p className="text-muted-foreground text-sm">
+													Keep reading after finish_reason so the trailing usage chunk is collected. Without this the request records zero
+													tokens and zero cost
+												</p>
+											</div>
+											<Switch
+												id="wait-for-usage"
+												size="md"
+												checked={field.value}
+												onCheckedChange={field.onChange}
+												disabled={!hasProviderCreateAccess}
+												data-testid="custom-provider-wait-for-usage-switch"
 											/>
 										</div>
 									</FormItem>

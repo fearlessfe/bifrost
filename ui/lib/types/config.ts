@@ -269,10 +269,6 @@ export interface ModelProviderKey {
 	value?: SecretVar;
 	models?: string[];
 	blacklisted_models?: string[];
-	/** RE2 patterns admitting models by name shape, alongside `models`. */
-	models_patterns?: string[];
-	/** RE2 patterns blocking models by name shape, alongside `blacklisted_models`. */
-	blacklisted_models_patterns?: string[];
 	weight: number;
 	enabled?: boolean;
 	use_for_batch_api?: boolean;
@@ -304,8 +300,6 @@ export const DefaultModelProviderKey: ModelProviderKey = {
 	},
 	models: [],
 	blacklisted_models: [],
-	models_patterns: [],
-	blacklisted_models_patterns: [],
 	weight: 1.0,
 	enabled: true,
 };
@@ -451,6 +445,7 @@ export interface CustomProviderConfig {
 	does_not_send_done_marker?: boolean;
 	uses_legacy_max_tokens?: boolean;
 	reasoning_effort_renames?: Record<string, string>;
+	wait_for_usage?: boolean;
 	allowed_requests?: AllowedRequests;
 	request_path_overrides?: Record<string, string>;
 }

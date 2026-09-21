@@ -267,7 +267,9 @@ const SidebarItemView = ({
 		<div className="flex w-full min-w-0 items-center justify-between">
 			<div className="flex w-full min-w-0 items-center gap-2">
 				<item.icon className={`h-4 w-4 shrink-0 ${isActive || isAnySubItemActive ? "text-primary" : "text-muted-foreground"}`} />
-				<span className={`min-w-0 truncate text-sm group-data-[collapsible=icon]:hidden ${isActive || isAnySubItemActive ? "font-medium" : "font-normal"}`}>
+				<span
+					className={`min-w-0 truncate text-sm group-data-[collapsible=icon]:hidden ${isActive || isAnySubItemActive ? "font-medium" : "font-normal"}`}
+				>
 					{item.title}
 				</span>
 				{item.tag && (
@@ -368,7 +370,9 @@ const SidebarItemView = ({
 									{SubItemIcon && (
 										<SubItemIcon className={`h-3.5 w-3.5 shrink-0 ${isSubItemActive ? "text-primary" : "text-muted-foreground"}`} />
 									)}
-									<span className={`min-w-0 truncate text-sm ${isSubItemActive ? "text-primary font-medium" : "text-slate-500 dark:text-zinc-400"}`}>
+									<span
+										className={`min-w-0 truncate text-sm ${isSubItemActive ? "text-primary font-medium" : "text-slate-500 dark:text-zinc-400"}`}
+									>
 										{subItem.title}
 									</span>
 									{subItem.tag && (
