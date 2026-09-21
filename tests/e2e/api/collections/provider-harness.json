@@ -158287,6 +158287,105 @@
           "response": []
         }
       ]
+    },
+    {
+      "name": "105. Custom provider reasoning_effort_renames_by_model wins over the provider-wide map (rename-by-model)",
+      "description": "custom_provider_config.reasoning_effort_renames_by_model scopes effort rewrites to individual\nmodels, keyed by the wire model name; a matching model entry wins over the provider-wide\nreasoning_effort_renames map, and models without an entry fall back to it.\n\nThe probe: the request sends reasoning_effort \"__rename_probe__\". On the\nopenai_renames_by_model provider (tests/integrations/python/config.json) the provider-wide\nmap rewrites it to \"__still_invalid__\", which real OpenAI 400s on, while the gpt-5-mini\nentry rewrites it to the valid \"minimal\". A success for gpt-5-mini therefore proves the\nmodel entry fired, and a 400 for gpt-5-nano proves the fallback path fired - no fixture\nupstream needed.\n\n105.1 is the regression guard: red before the feature (only the provider-wide map exists,\nso the probe reaches the wire invalid), green after. 105.2 pins the fallback so the\nprovider-wide map cannot silently stop applying to unlisted models.",
+      "item": [
+        {
+          "name": "105.1 openai_renames_by_model/gpt-5-mini /v1/chat/completions - model entry rewrites the probe to a valid effort, request succeeds",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// gpt-5-mini has a by-model entry rewriting __rename_probe__ to \"minimal\"; without the",
+                  "// feature the provider-wide map would send __still_invalid__ and OpenAI would 400.",
+                  "if ([401, 403, 429, 500, 502, 503, 504].indexOf(pm.response.code) !== -1) { return; }",
+                  "pm.test('105.1 request succeeded - the model-specific rename won', function () {",
+                  "  pm.expect(pm.response.code, 'failed: ' + pm.response.text()).to.be.below(400);",
+                  "});",
+                  "pm.test('105.1 response carries a choice', function () {",
+                  "  var j = pm.response.json();",
+                  "  pm.expect(j.choices, 'expected choices in: ' + pm.response.text()).to.be.an('array').with.length.above(0);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"openai_renames_by_model/gpt-5-mini\",\n  \"max_completion_tokens\": 64,\n  \"reasoning_effort\": \"__rename_probe__\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"Say hello in one short sentence.\"\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/chat/completions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "chat",
+                "completions"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "105.2 openai_renames_by_model/gpt-5-nano /v1/chat/completions - unlisted model falls back to the provider-wide map (documented default)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// gpt-5-nano has no by-model entry, so the provider-wide map applies: __rename_probe__",
+                  "// becomes __still_invalid__ and the upstream 400s on the enum.",
+                  "if ([401, 403, 429, 500, 502, 503, 504].indexOf(pm.response.code) !== -1) { return; }",
+                  "pm.test('105.2 unlisted model still uses the provider-wide map', function () {",
+                  "  pm.expect(pm.response.code, 'expected the upstream 400, got: ' + pm.response.text()).to.eql(400);",
+                  "  pm.expect(pm.response.text(), 'expected the rejection to name the field: ' + pm.response.text()).to.include('reasoning_effort');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"openai_renames_by_model/gpt-5-nano\",\n  \"max_completion_tokens\": 64,\n  \"reasoning_effort\": \"__rename_probe__\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"Say hello in one short sentence.\"\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/chat/completions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "chat",
+                "completions"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
     }
   ]
 }
