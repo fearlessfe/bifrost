@@ -8732,6 +8732,16 @@
           },
           "description": "Rewrite reasoning effort values on chat completions egress for upstreams whose accepted ladder differs from OpenAI's (e.g. {\"medium\": \"high\"} for GLM's low/high/max)"
         },
+        "reasoning_effort_renames_by_model": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "description": "Per-model reasoning effort rewrites, keyed by the wire model name (e.g. {\"glm-5.3\": {\"medium\": \"high\"}}). A matching model entry wins over reasoning_effort_renames; models without an entry fall back to the provider-wide map"
+        },
         "base_provider_type": {
           "type": "string",
           "enum": [

@@ -1814,6 +1814,39 @@ func TestToOpenAIChatRequest_CustomProviderReasoningEffortRenames(t *testing.T) 
 		require.NotNil(t, converted.Reasoning.Effort)
 		require.Equal(t, "medium", *converted.Reasoning.Effort)
 	})
+
+	t.Run("model-specific rename wins over provider-wide map", func(t *testing.T) {
+		ctx := schemas.NewBifrostContext(nil, schemas.NoDeadline)
+		ctx.SetValue(schemas.BifrostContextKeyIsCustomProvider, true)
+		ctx.SetValue(schemas.BifrostContextKeyReasoningEffortRenames, map[string]string{"medium": "high"})
+		ctx.SetValue(schemas.BifrostContextKeyModelReasoningEffortRenames, map[string]map[string]string{
+			"glm-4.6": {"medium": "max"},
+		})
+
+		bifrostReq := newReq()
+		converted := ToOpenAIChatRequest(ctx, bifrostReq)
+		require.NotNil(t, converted)
+		require.NotNil(t, converted.Reasoning)
+		require.NotNil(t, converted.Reasoning.Effort)
+		require.Equal(t, "max", *converted.Reasoning.Effort)
+		// The caller's request must not be mutated — Reasoning is shared by pointer.
+		require.Equal(t, "medium", *bifrostReq.Params.Reasoning.Effort)
+	})
+
+	t.Run("model without an entry falls back to the provider-wide map", func(t *testing.T) {
+		ctx := schemas.NewBifrostContext(nil, schemas.NoDeadline)
+		ctx.SetValue(schemas.BifrostContextKeyIsCustomProvider, true)
+		ctx.SetValue(schemas.BifrostContextKeyReasoningEffortRenames, map[string]string{"medium": "high"})
+		ctx.SetValue(schemas.BifrostContextKeyModelReasoningEffortRenames, map[string]map[string]string{
+			"other-model": {"medium": "max"},
+		})
+
+		converted := ToOpenAIChatRequest(ctx, newReq())
+		require.NotNil(t, converted)
+		require.NotNil(t, converted.Reasoning)
+		require.NotNil(t, converted.Reasoning.Effort)
+		require.Equal(t, "high", *converted.Reasoning.Effort)
+	})
 }
 
 // When a conversation switches from Gemini to OpenAI, Gemini's thoughtSignature is

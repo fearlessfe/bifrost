@@ -543,6 +543,11 @@ type CustomProviderConfig struct {
 	// egress, for upstreams whose accepted ladder differs from OpenAI's (e.g. GLM
 	// accepts only low/high/max, so {"medium": "high"}).
 	ReasoningEffortRenames map[string]string `json:"reasoning_effort_renames,omitempty"`
+	// ReasoningEffortRenamesByModel scopes renames to individual models, keyed by
+	// the model name as sent on the wire. A matching model entry wins over
+	// ReasoningEffortRenames; models without an entry fall back to the
+	// provider-wide map.
+	ReasoningEffortRenamesByModel map[string]map[string]string `json:"reasoning_effort_renames_by_model,omitempty"`
 }
 
 // IsOperationAllowed checks if a specific operation is allowed for this custom provider

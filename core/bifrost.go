@@ -7008,6 +7008,12 @@ func (bifrost *Bifrost) requestWorker(provider schemas.Provider, config *schemas
 		} else {
 			req.Context.ClearValue(schemas.BifrostContextKeyReasoningEffortRenames)
 		}
+		// Same per-attempt stamping for the per-model rename overrides.
+		if config.CustomProviderConfig != nil && len(config.CustomProviderConfig.ReasoningEffortRenamesByModel) > 0 {
+			req.Context.SetValue(schemas.BifrostContextKeyModelReasoningEffortRenames, config.CustomProviderConfig.ReasoningEffortRenamesByModel)
+		} else {
+			req.Context.ClearValue(schemas.BifrostContextKeyModelReasoningEffortRenames)
+		}
 
 		bifrost.endCoreSpan(workerSetupSpan)
 

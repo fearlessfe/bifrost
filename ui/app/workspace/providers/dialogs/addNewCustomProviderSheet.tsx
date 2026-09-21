@@ -1,4 +1,5 @@
 import { Button } from "@/components/ui/button";
+import { EffortRenamesByModelTable } from "@/components/ui/custom/effortRenamesByModelTable";
 import { HeadersTable } from "@/components/ui/headersTable";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
@@ -28,6 +29,7 @@ const formSchema = z.object({
 	does_not_send_done_marker: z.boolean().optional(),
 	uses_legacy_max_tokens: z.boolean().optional(),
 	reasoning_effort_renames: z.record(z.string(), z.string()).optional(),
+	reasoning_effort_renames_by_model: z.record(z.string(), z.record(z.string(), z.string())).optional(),
 	allow_private_network: z.boolean().optional(),
 });
 
@@ -93,6 +95,7 @@ export function AddCustomProviderSheetContent({ show = true, onClose, onSave }: 
 			does_not_send_done_marker: false,
 			uses_legacy_max_tokens: false,
 			reasoning_effort_renames: undefined,
+			reasoning_effort_renames_by_model: undefined,
 			allow_private_network: false,
 		},
 	});
@@ -114,6 +117,7 @@ export function AddCustomProviderSheetContent({ show = true, onClose, onSave }: 
 				does_not_send_done_marker: data.does_not_send_done_marker ?? false,
 				uses_legacy_max_tokens: data.uses_legacy_max_tokens ?? false,
 				reasoning_effort_renames: data.reasoning_effort_renames,
+				reasoning_effort_renames_by_model: data.reasoning_effort_renames_by_model,
 			},
 			network_config: {
 				base_url: data.base_url,
@@ -148,6 +152,7 @@ export function AddCustomProviderSheetContent({ show = true, onClose, onSave }: 
 			form.setValue("does_not_send_done_marker", false);
 			form.setValue("uses_legacy_max_tokens", false);
 			form.setValue("reasoning_effort_renames", undefined);
+			form.setValue("reasoning_effort_renames_by_model", undefined);
 		}
 	}, [isDoneMarkerToggleDisabled, form]);
 
@@ -350,6 +355,29 @@ export function AddCustomProviderSheetContent({ show = true, onClose, onSave }: 
 										<p className="text-muted-foreground text-sm">
 											Rewrite reasoning effort values for upstreams whose accepted ladder differs from OpenAI&apos;s (e.g. GLM accepts only
 											low/high/max, so map medium → high)
+										</p>
+										<FormMessage />
+									</FormItem>
+								)}
+							/>
+						)}
+						{!isDoneMarkerToggleDisabled && (
+							<FormField
+								control={form.control}
+								name="reasoning_effort_renames_by_model"
+								render={({ field }) => (
+									<FormItem>
+										<FormControl>
+											<EffortRenamesByModelTable
+												value={field.value || {}}
+												onChange={field.onChange}
+												label="Reasoning Effort Renames by Model"
+												disabled={!hasProviderCreateAccess}
+											/>
+										</FormControl>
+										<p className="text-muted-foreground text-sm">
+											Model-specific overrides, keyed by the model name sent upstream. A matching model entry wins over the provider-wide
+											map above; models without an entry fall back to it.
 										</p>
 										<FormMessage />
 									</FormItem>

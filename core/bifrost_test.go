@@ -778,6 +778,88 @@ func TestCustomProviderReasoningEffortRenamesReachWire(t *testing.T) {
 	}
 }
 
+// TestCustomProviderReasoningEffortRenamesByModelReachWire pins the worker path for
+// custom_provider_config.reasoning_effort_renames_by_model: the worker must stamp the
+// per-model map onto the request context, and a model with its own entry must win over
+// the provider-wide map.
+func TestCustomProviderReasoningEffortRenamesByModelReachWire(t *testing.T) {
+	bodyCh := make(chan map[string]interface{}, 2)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		var parsed map[string]interface{}
+		if err := json.Unmarshal(body, &parsed); err == nil {
+			select {
+			case bodyCh <- parsed:
+			default:
+			}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"id":"chatcmpl-1","object":"chat.completion","created":1,"model":"glm-4.6",` +
+			`"choices":[{"index":0,"message":{"role":"assistant","content":"hi"},"finish_reason":"stop"}],` +
+			`"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}`))
+	}))
+	defer server.Close()
+
+	const customProvider = schemas.ModelProvider("custom-openai-by-model")
+	account := NewMockAccount()
+	account.AddProviderWithBaseURL(customProvider, 1, 1, server.URL)
+	account.configs[customProvider].NetworkConfig.MaxRetries = 0
+	account.SetCustomProviderConfig(customProvider, &schemas.CustomProviderConfig{
+		BaseProviderType:       schemas.OpenAI,
+		ReasoningEffortRenames: map[string]string{"medium": "high"},
+		ReasoningEffortRenamesByModel: map[string]map[string]string{
+			"glm-4.6": {"medium": "max"},
+		},
+	})
+	account.SetKeysForProvider(customProvider, []schemas.Key{
+		{ID: "custom-key", Value: *schemas.NewSecretVar("sk-custom"), Models: schemas.WhiteList{"*"}, Weight: 100},
+	})
+
+	client := newStreamTestClient(t, account)
+	ctx, cancel := schemas.NewBifrostContextWithCancel(context.Background())
+	defer cancel()
+
+	newReq := func(model string) *schemas.BifrostChatRequest {
+		return &schemas.BifrostChatRequest{
+			Provider: customProvider,
+			Model:    model,
+			Input: []schemas.ChatMessage{{
+				Role:    schemas.ChatMessageRoleUser,
+				Content: &schemas.ChatMessageContent{ContentStr: Ptr("hi")},
+			}},
+			Params: &schemas.ChatParameters{
+				Reasoning: &schemas.ChatReasoning{Effort: Ptr("medium")},
+			},
+		}
+	}
+
+	// Model with its own entry: the model-specific rename wins.
+	if _, bifrostErr := client.ChatCompletionRequest(ctx, newReq("glm-4.6")); bifrostErr != nil {
+		t.Fatalf("chat request failed: %v", bifrostErr)
+	}
+	select {
+	case body := <-bodyCh:
+		if got, _ := body["reasoning_effort"].(string); got != "max" {
+			t.Errorf("expected model-specific rename to %q on the wire, got %q (body: %v)", "max", got, body)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("mock upstream never received a request")
+	}
+
+	// Model without an entry: falls back to the provider-wide map.
+	if _, bifrostErr := client.ChatCompletionRequest(ctx, newReq("glm-4.5")); bifrostErr != nil {
+		t.Fatalf("chat request failed: %v", bifrostErr)
+	}
+	select {
+	case body := <-bodyCh:
+		if got, _ := body["reasoning_effort"].(string); got != "high" {
+			t.Errorf("expected provider-wide rename to %q on the wire, got %q (body: %v)", "high", got, body)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("mock upstream never received a request")
+	}
+}
+
 // Test that transientServerStatusCodes are properly defined.
 // These are upstream-side failures unrelated to the credential — the same key is retried.
 func TestTransientServerStatusCodes(t *testing.T) {

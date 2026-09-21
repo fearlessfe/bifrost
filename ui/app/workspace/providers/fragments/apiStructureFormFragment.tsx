@@ -1,3 +1,4 @@
+import { EffortRenamesByModelTable } from "@/components/ui/custom/effortRenamesByModelTable";
 import { HeadersTable } from "@/components/ui/headersTable";
 import { Button } from "@/components/ui/button";
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
@@ -40,6 +41,7 @@ export function ApiStructureFormFragment({ provider }: Props) {
 			does_not_send_done_marker: provider.custom_provider_config?.does_not_send_done_marker ?? false,
 			uses_legacy_max_tokens: provider.custom_provider_config?.uses_legacy_max_tokens ?? false,
 			reasoning_effort_renames: provider.custom_provider_config?.reasoning_effort_renames ?? undefined,
+			reasoning_effort_renames_by_model: provider.custom_provider_config?.reasoning_effort_renames_by_model ?? undefined,
 			allowed_requests: {
 				text_completion: provider.custom_provider_config?.allowed_requests?.text_completion ?? true,
 				text_completion_stream: provider.custom_provider_config?.allowed_requests?.text_completion_stream ?? true,
@@ -83,6 +85,7 @@ export function ApiStructureFormFragment({ provider }: Props) {
 					does_not_send_done_marker: data.does_not_send_done_marker ?? false,
 					uses_legacy_max_tokens: data.uses_legacy_max_tokens ?? false,
 					reasoning_effort_renames: data.reasoning_effort_renames,
+					reasoning_effort_renames_by_model: data.reasoning_effort_renames_by_model,
 					allowed_requests: data.allowed_requests,
 					request_path_overrides: cleanPathOverrides(data.request_path_overrides),
 				},
@@ -239,6 +242,29 @@ export function ApiStructureFormFragment({ provider }: Props) {
 									<p className="text-muted-foreground text-sm">
 										Rewrite reasoning effort values for upstreams whose accepted ladder differs from OpenAI&apos;s (e.g. GLM accepts only
 										low/high/max, so map medium → high)
+									</p>
+									<FormMessage />
+								</FormItem>
+							)}
+						/>
+					)}
+					{!isDoneMarkerToggleDisabled && (
+						<FormField
+							control={form.control}
+							name="reasoning_effort_renames_by_model"
+							render={({ field }) => (
+								<FormItem>
+									<FormControl>
+										<EffortRenamesByModelTable
+											value={field.value || {}}
+											onChange={field.onChange}
+											label="Reasoning Effort Renames by Model"
+											disabled={!hasUpdateProviderAccess}
+										/>
+									</FormControl>
+									<p className="text-muted-foreground text-sm">
+										Model-specific overrides, keyed by the model name sent upstream. A matching model entry wins over the provider-wide map
+										above; models without an entry fall back to it.
 									</p>
 									<FormMessage />
 								</FormItem>
