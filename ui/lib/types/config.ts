@@ -447,6 +447,7 @@ export interface CustomProviderConfig {
 	reasoning_effort_renames?: Record<string, string>;
 	drop_reasoning_effort_with_tools?: boolean;
 	wait_for_usage?: boolean;
+	reasoning_effort_renames_by_model?: Record<string, Record<string, string>>;
 	allowed_requests?: AllowedRequests;
 	request_path_overrides?: Record<string, string>;
 }

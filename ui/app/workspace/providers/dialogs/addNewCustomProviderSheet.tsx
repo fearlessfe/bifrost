@@ -1,4 +1,5 @@
 import { Button } from "@/components/ui/button";
+import { EffortRenamesByModelTable } from "@/components/ui/custom/effortRenamesByModelTable";
 import { HeadersTable } from "@/components/ui/headersTable";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
@@ -30,6 +31,7 @@ const formSchema = z.object({
 	reasoning_effort_renames: z.record(z.string(), z.string()).optional(),
 	drop_reasoning_effort_with_tools: z.boolean().optional(),
 	wait_for_usage: z.boolean().optional(),
+	reasoning_effort_renames_by_model: z.record(z.string(), z.record(z.string(), z.string())).optional(),
 	allow_private_network: z.boolean().optional(),
 });
 
@@ -97,6 +99,7 @@ export function AddCustomProviderSheetContent({ show = true, onClose, onSave }: 
 			reasoning_effort_renames: undefined,
 			drop_reasoning_effort_with_tools: false,
 			wait_for_usage: false,
+			reasoning_effort_renames_by_model: undefined,
 			allow_private_network: false,
 		},
 	});
@@ -120,6 +123,7 @@ export function AddCustomProviderSheetContent({ show = true, onClose, onSave }: 
 				reasoning_effort_renames: data.reasoning_effort_renames,
 				drop_reasoning_effort_with_tools: data.drop_reasoning_effort_with_tools ?? false,
 				wait_for_usage: data.wait_for_usage ?? false,
+				reasoning_effort_renames_by_model: data.reasoning_effort_renames_by_model,
 			},
 			network_config: {
 				base_url: data.base_url,
@@ -158,6 +162,7 @@ export function AddCustomProviderSheetContent({ show = true, onClose, onSave }: 
 			form.setValue("uses_legacy_max_tokens", false);
 			form.setValue("reasoning_effort_renames", undefined);
 			form.setValue("drop_reasoning_effort_with_tools", false);
+			form.setValue("reasoning_effort_renames_by_model", undefined);
 		}
 	}, [isDoneMarkerToggleDisabled, form]);
 
@@ -428,6 +433,29 @@ export function AddCustomProviderSheetContent({ show = true, onClose, onSave }: 
 												data-testid="custom-provider-drop-reasoning-effort-with-tools-switch"
 											/>
 										</div>
+									</FormItem>
+								)}
+							/>
+						)}
+						{!isDoneMarkerToggleDisabled && (
+							<FormField
+								control={form.control}
+								name="reasoning_effort_renames_by_model"
+								render={({ field }) => (
+									<FormItem>
+										<FormControl>
+											<EffortRenamesByModelTable
+												value={field.value || {}}
+												onChange={field.onChange}
+												label="Reasoning Effort Renames by Model"
+												disabled={!hasProviderCreateAccess}
+											/>
+										</FormControl>
+										<p className="text-muted-foreground text-sm">
+											Model-specific overrides, keyed by the model name sent upstream. A matching model entry wins over the provider-wide
+											map above; models without an entry fall back to it.
+										</p>
+										<FormMessage />
 									</FormItem>
 								)}
 							/>

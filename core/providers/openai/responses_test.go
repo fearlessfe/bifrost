@@ -778,6 +778,81 @@ func TestToOpenAIResponsesRequest_ReasoningContextAllTurns(t *testing.T) {
 	}
 }
 
+func TestToOpenAIResponsesRequest_CustomProviderReasoningEffortRenames(t *testing.T) {
+	newReq := func(model string) *schemas.BifrostResponsesRequest {
+		return &schemas.BifrostResponsesRequest{
+			Provider: "glm",
+			Model:    model,
+			Input: []schemas.ResponsesMessage{{
+				Role:    schemas.Ptr(schemas.ResponsesInputMessageRoleUser),
+				Content: &schemas.ResponsesMessageContent{ContentStr: schemas.Ptr("hello")},
+			}},
+			Params: &schemas.ResponsesParameters{
+				Reasoning: &schemas.ResponsesParametersReasoning{Effort: schemas.Ptr("medium")},
+			},
+		}
+	}
+
+	newCustomCtx := func() *schemas.BifrostContext {
+		ctx := schemas.NewBifrostContext(nil, schemas.NoDeadline)
+		ctx.SetValue(schemas.BifrostContextKeyIsCustomProvider, true)
+		return ctx
+	}
+
+	t.Run("provider-wide rename rewrites effort on the wire", func(t *testing.T) {
+		ctx := newCustomCtx()
+		ctx.SetValue(schemas.BifrostContextKeyReasoningEffortRenames, map[string]string{"medium": "high"})
+
+		bifrostReq := newReq("glm-5.2")
+		converted := ToOpenAIResponsesRequest(ctx, bifrostReq)
+		require.NotNil(t, converted)
+		require.NotNil(t, converted.Reasoning)
+		require.NotNil(t, converted.Reasoning.Effort)
+		require.Equal(t, "high", *converted.Reasoning.Effort)
+		// The caller's request must not be mutated — Reasoning is shared by pointer.
+		require.Equal(t, "medium", *bifrostReq.Params.Reasoning.Effort)
+	})
+
+	t.Run("model-specific rename wins over provider-wide map", func(t *testing.T) {
+		ctx := newCustomCtx()
+		ctx.SetValue(schemas.BifrostContextKeyReasoningEffortRenames, map[string]string{"medium": "high"})
+		ctx.SetValue(schemas.BifrostContextKeyModelReasoningEffortRenames, map[string]map[string]string{
+			"glm-5.2": {"medium": "max"},
+		})
+
+		converted := ToOpenAIResponsesRequest(ctx, newReq("glm-5.2"))
+		require.NotNil(t, converted)
+		require.NotNil(t, converted.Reasoning)
+		require.NotNil(t, converted.Reasoning.Effort)
+		require.Equal(t, "max", *converted.Reasoning.Effort)
+	})
+
+	t.Run("model without an entry falls back to the provider-wide map", func(t *testing.T) {
+		ctx := newCustomCtx()
+		ctx.SetValue(schemas.BifrostContextKeyReasoningEffortRenames, map[string]string{"medium": "high"})
+		ctx.SetValue(schemas.BifrostContextKeyModelReasoningEffortRenames, map[string]map[string]string{
+			"other-model": {"medium": "max"},
+		})
+
+		converted := ToOpenAIResponsesRequest(ctx, newReq("glm-5.2"))
+		require.NotNil(t, converted)
+		require.NotNil(t, converted.Reasoning)
+		require.NotNil(t, converted.Reasoning.Effort)
+		require.Equal(t, "high", *converted.Reasoning.Effort)
+	})
+
+	t.Run("unmapped effort passes through unchanged", func(t *testing.T) {
+		ctx := newCustomCtx()
+		ctx.SetValue(schemas.BifrostContextKeyReasoningEffortRenames, map[string]string{"minimal": "low"})
+
+		converted := ToOpenAIResponsesRequest(ctx, newReq("glm-5.2"))
+		require.NotNil(t, converted)
+		require.NotNil(t, converted.Reasoning)
+		require.NotNil(t, converted.Reasoning.Effort)
+		require.Equal(t, "medium", *converted.Reasoning.Effort)
+	})
+}
+
 func TestToOpenAIResponsesRequest_GPTOSS_SummaryToContentBlocks(t *testing.T) {
 	tests := []struct {
 		name              string

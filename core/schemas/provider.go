@@ -550,6 +550,11 @@ type CustomProviderConfig struct {
 	// stay: they are the client's functional requirement, reasoning is the knob.
 	DropReasoningEffortWithTools bool `json:"drop_reasoning_effort_with_tools,omitempty"`
 	WaitForUsage                 bool `json:"wait_for_usage"` // With DoesNotSendDoneMarker, keep reading past finish_reason so the trailing usage-only chunk is not dropped (#7143). A silent upstream then ends on network_config.stream_idle_timeout_in_seconds
+	// ReasoningEffortRenamesByModel scopes renames to individual models, keyed by
+	// the model name as sent on the wire. A matching model entry wins over
+	// ReasoningEffortRenames; models without an entry fall back to the
+	// provider-wide map.
+	ReasoningEffortRenamesByModel map[string]map[string]string `json:"reasoning_effort_renames_by_model,omitempty"`
 }
 
 // IsOperationAllowed checks if a specific operation is allowed for this custom provider

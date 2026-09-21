@@ -631,7 +631,21 @@ func ToOpenAIResponsesRequest(ctx *schemas.BifrostContext, bifrostReq *schemas.B
 			if req.ResponsesParameters.Reasoning.Effort != nil {
 				// Native field is provided, use it (and clear max_tokens)
 				effort := *req.ResponsesParameters.Reasoning.Effort
-				req.ResponsesParameters.Reasoning.Effort = schemas.Ptr(caps.NormalizeReasoningEffort(effort, defaultEffortControl(capModel)))
+				// Custom providers are unknown to the datasheet, so their configured
+				// renames decide; unmapped values keep the datasheet clamp.
+				applied := false
+				if ctx != nil {
+					if isCustomProvider, ok := ctx.Value(schemas.BifrostContextKeyIsCustomProvider).(bool); ok && isCustomProvider {
+						if renamed, hit := renameReasoningEffortForCustomProvider(ctx, req.Model, effort); hit {
+							effort = renamed
+							applied = true
+						}
+					}
+				}
+				if !applied {
+					effort = caps.NormalizeReasoningEffort(effort, defaultEffortControl(capModel))
+				}
+				req.ResponsesParameters.Reasoning.Effort = schemas.Ptr(effort)
 				// Clear max_tokens since OpenAI doesn't use it
 				req.ResponsesParameters.Reasoning.MaxTokens = nil
 			} else if req.ResponsesParameters.Reasoning.MaxTokens != nil {

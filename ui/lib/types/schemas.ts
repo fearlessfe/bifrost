@@ -827,6 +827,7 @@ export const customProviderConfigSchema = z
 		reasoning_effort_renames: z.record(z.string(), z.string()).optional(),
 		drop_reasoning_effort_with_tools: z.boolean().optional(),
 		wait_for_usage: z.boolean().optional(),
+		reasoning_effort_renames_by_model: z.record(z.string(), z.record(z.string(), z.string())).optional(),
 		allowed_requests: allowedRequestsSchema.optional(),
 		request_path_overrides: z.record(z.string(), z.string().optional()).optional(),
 	})
@@ -853,6 +854,7 @@ export const formCustomProviderConfigSchema = z
 		reasoning_effort_renames: z.record(z.string(), z.string()).optional(),
 		drop_reasoning_effort_with_tools: z.boolean().optional(),
 		wait_for_usage: z.boolean().optional(),
+		reasoning_effort_renames_by_model: z.record(z.string(), z.record(z.string(), z.string())).optional(),
 		allowed_requests: allowedRequestsSchema.optional(),
 		request_path_overrides: z.record(z.string(), z.string().optional()).optional(),
 	})

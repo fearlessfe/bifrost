@@ -1,3 +1,4 @@
+import { EffortRenamesByModelTable } from "@/components/ui/custom/effortRenamesByModelTable";
 import { HeadersTable } from "@/components/ui/headersTable";
 import { Button } from "@/components/ui/button";
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
@@ -42,6 +43,7 @@ export function ApiStructureFormFragment({ provider }: Props) {
 			reasoning_effort_renames: provider.custom_provider_config?.reasoning_effort_renames ?? undefined,
 			drop_reasoning_effort_with_tools: provider.custom_provider_config?.drop_reasoning_effort_with_tools ?? false,
 			wait_for_usage: provider.custom_provider_config?.wait_for_usage ?? false,
+			reasoning_effort_renames_by_model: provider.custom_provider_config?.reasoning_effort_renames_by_model ?? undefined,
 			allowed_requests: {
 				text_completion: provider.custom_provider_config?.allowed_requests?.text_completion ?? true,
 				text_completion_stream: provider.custom_provider_config?.allowed_requests?.text_completion_stream ?? true,
@@ -87,6 +89,7 @@ export function ApiStructureFormFragment({ provider }: Props) {
 					reasoning_effort_renames: data.reasoning_effort_renames,
 					drop_reasoning_effort_with_tools: data.drop_reasoning_effort_with_tools ?? false,
 					wait_for_usage: data.wait_for_usage ?? false,
+					reasoning_effort_renames_by_model: data.reasoning_effort_renames_by_model,
 					allowed_requests: data.allowed_requests,
 					request_path_overrides: cleanPathOverrides(data.request_path_overrides),
 				},
@@ -314,6 +317,29 @@ export function ApiStructureFormFragment({ provider }: Props) {
 											data-testid="custom-provider-drop-reasoning-effort-with-tools-switch"
 										/>
 									</div>
+								</FormItem>
+							)}
+						/>
+					)}
+					{!isDoneMarkerToggleDisabled && (
+						<FormField
+							control={form.control}
+							name="reasoning_effort_renames_by_model"
+							render={({ field }) => (
+								<FormItem>
+									<FormControl>
+										<EffortRenamesByModelTable
+											value={field.value || {}}
+											onChange={field.onChange}
+											label="Reasoning Effort Renames by Model"
+											disabled={!hasUpdateProviderAccess}
+										/>
+									</FormControl>
+									<p className="text-muted-foreground text-sm">
+										Model-specific overrides, keyed by the model name sent upstream. A matching model entry wins over the provider-wide map
+										above; models without an entry fall back to it.
+									</p>
+									<FormMessage />
 								</FormItem>
 							)}
 						/>

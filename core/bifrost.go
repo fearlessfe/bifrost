@@ -7017,6 +7017,12 @@ func (bifrost *Bifrost) requestWorker(provider schemas.Provider, config *schemas
 		} else {
 			req.Context.ClearValue(schemas.BifrostContextKeyDropReasoningEffortWithTools)
 		}
+		// Same per-attempt stamping for the per-model rename overrides.
+		if config.CustomProviderConfig != nil && len(config.CustomProviderConfig.ReasoningEffortRenamesByModel) > 0 {
+			req.Context.SetValue(schemas.BifrostContextKeyModelReasoningEffortRenames, config.CustomProviderConfig.ReasoningEffortRenamesByModel)
+		} else {
+			req.Context.ClearValue(schemas.BifrostContextKeyModelReasoningEffortRenames)
+		}
 		// Same set-or-clear discipline: wait_for_usage must never leak onto a fallback provider
 		// that did not declare it, or that provider's stream would hold past finish_reason.
 		if config.CustomProviderConfig != nil && config.CustomProviderConfig.WaitForUsage {

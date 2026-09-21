@@ -52,6 +52,30 @@ func IsOpenAIReasoningModel(model string) bool {
 	return strings.Contains(modelLower, "gpt-5") || strings.Contains(modelLower, "gpt-6")
 }
 
+// renameReasoningEffortForCustomProvider rewrites a requested reasoning effort per
+// the custom provider's configured renames: the model-specific map (keyed by the
+// wire model, from custom_provider_config.reasoning_effort_renames_by_model) wins
+// over the provider-wide map (reasoning_effort_renames). Unmapped values report
+// applied=false so callers keep their default handling.
+func renameReasoningEffortForCustomProvider(ctx *schemas.BifrostContext, model, effort string) (string, bool) {
+	if ctx == nil {
+		return effort, false
+	}
+	if byModel, ok := ctx.Value(schemas.BifrostContextKeyModelReasoningEffortRenames).(map[string]map[string]string); ok {
+		if modelRenames, ok := byModel[model]; ok {
+			if renamed, hit := modelRenames[effort]; hit {
+				return renamed, true
+			}
+		}
+	}
+	if renames, ok := ctx.Value(schemas.BifrostContextKeyReasoningEffortRenames).(map[string]string); ok {
+		if renamed, hit := renames[effort]; hit {
+			return renamed, true
+		}
+	}
+	return effort, false
+}
+
 // defaultEffortControl widens the base low/medium/high ladder with the effort
 // levels a model natively accepts. Only the widening is name-derived; the
 // datasheet's per-level booleans take precedence when a row exists.
