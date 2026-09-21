@@ -584,6 +584,24 @@
         "stream_idle_timeout_in_seconds": 15
       }
     },
+    "openai_drop_effort_tools": {
+      "keys": [
+        {
+          "name": "OpenAI API Key",
+          "value": "env.OPENAI_API_KEY",
+          "weight": 1,
+          "models": ["*"]
+        }
+      ],
+      "custom_provider_config": {
+        "base_provider_type": "openai",
+        "is_key_less": false,
+        "drop_reasoning_effort_with_tools": true
+      },
+      "network_config": {
+        "default_request_timeout_in_seconds": 300
+      }
+    },
     "openai_pc_auto": {
       "keys": [
         {

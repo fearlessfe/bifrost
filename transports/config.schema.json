@@ -8740,6 +8740,10 @@
           },
           "description": "Rewrite reasoning effort values on chat completions egress for upstreams whose accepted ladder differs from OpenAI's (e.g. {\"medium\": \"high\"} for GLM's low/high/max)"
         },
+        "drop_reasoning_effort_with_tools": {
+          "type": "boolean",
+          "description": "Drop reasoning on chat completions egress when the request carries tools, for upstreams that reject the combination (e.g. azure gpt-5.6 deployments 400 on tools + reasoning.effort). Tools are kept; only the reasoning knob is dropped"
+        },
         "wait_for_usage": {
           "type": "boolean",
           "description": "With does_not_send_done_marker, keep reading past finish_reason so the trailing usage-only chunk is collected instead of dropped. Without it the request records zero tokens and zero cost. An upstream that then goes silent ends on network_config.stream_idle_timeout_in_seconds"

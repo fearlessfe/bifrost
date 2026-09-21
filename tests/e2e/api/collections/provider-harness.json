@@ -158143,6 +158143,150 @@
           "response": []
         }
       ]
+    },
+    {
+      "name": "104. Custom provider drop_reasoning_effort_with_tools strips reasoning when tools are present (drop-effort-tools)",
+      "description": "custom_provider_config.drop_reasoning_effort_with_tools: upstreams such as azure gpt-5.6\ndeployments 400 on chat completions that carry both tools and reasoning effort. Opting the\ncustom provider in makes the converter drop reasoning on egress whenever the request\ncarries tools; tools survive, since they are the client's functional requirement and\nreasoning is only a quality knob.\n\nThe probe: reasoning_effort is set to the deliberately invalid value \"__drop_probe__\".\nIf reasoning reaches the wire, real OpenAI rejects the enum with a 400 naming the field,\nso a success proves the drop happened - no fixture upstream needed. openai_drop_effort_tools\nis registered in tests/integrations/python/config.json for these three items.\n\n104.1 is the regression guard: red before the change (effort forwarded, upstream 400),\ngreen after (effort dropped, request succeeds). 104.2 pins the documented default that\nthe drop only fires when tools are present. 104.3 is the unconfigured control proving\nthe flag - not luck - separates 104.1 from a plain provider.",
+      "item": [
+        {
+          "name": "104.1 openai_drop_effort_tools/gpt-5-mini /v1/chat/completions - tools + invalid effort: reasoning dropped, request succeeds",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// The invalid effort value would 400 on the wire; a success proves the converter",
+                  "// dropped reasoning before egress because the request carries tools.",
+                  "if ([401, 403, 429, 500, 502, 503, 504].indexOf(pm.response.code) !== -1) { return; }",
+                  "pm.test('104.1 request succeeded - reasoning was dropped, not forwarded', function () {",
+                  "  pm.expect(pm.response.code, 'failed: ' + pm.response.text()).to.be.below(400);",
+                  "});",
+                  "pm.test('104.1 response carries a choice', function () {",
+                  "  var j = pm.response.json();",
+                  "  pm.expect(j.choices, 'expected choices in: ' + pm.response.text()).to.be.an('array').with.length.above(0);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"openai_drop_effort_tools/gpt-5-mini\",\n  \"max_completion_tokens\": 64,\n  \"reasoning_effort\": \"__drop_probe__\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"Say hello in one short sentence.\"\n    }\n  ],\n  \"tools\": [\n    {\n      \"type\": \"function\",\n      \"function\": {\n        \"name\": \"get_weather\",\n        \"description\": \"Get the current weather for a city.\",\n        \"parameters\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"city\": {\n              \"type\": \"string\"\n            }\n          },\n          \"required\": [\n            \"city\"\n          ]\n        }\n      }\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/chat/completions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "chat",
+                "completions"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "104.2 openai_drop_effort_tools/gpt-5-mini /v1/chat/completions - no tools: invalid effort still forwarded and rejected (documented default)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Unchanged behaviour, pinned deliberately: without tools the flag must not fire,",
+                  "// so the invalid effort reaches the wire and the upstream 400s on the enum.",
+                  "if ([401, 403, 429, 500, 502, 503, 504].indexOf(pm.response.code) !== -1) { return; }",
+                  "pm.test('104.2 without tools the invalid effort is still forwarded', function () {",
+                  "  pm.expect(pm.response.code, 'expected the upstream 400, got: ' + pm.response.text()).to.eql(400);",
+                  "  pm.expect(pm.response.text(), 'expected the rejection to name the field: ' + pm.response.text()).to.include('reasoning_effort');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"openai_drop_effort_tools/gpt-5-mini\",\n  \"max_completion_tokens\": 64,\n  \"reasoning_effort\": \"__drop_probe__\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"Say hello in one short sentence.\"\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/chat/completions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "chat",
+                "completions"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "104.3 openai/gpt-5-mini /v1/chat/completions - tools + invalid effort rejected without the flag (control)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Control: a provider that did not opt in must keep forwarding reasoning untouched,",
+                  "// so tools + invalid effort 400s here even though 104.1 succeeds.",
+                  "if ([401, 403, 429, 500, 502, 503, 504].indexOf(pm.response.code) !== -1) { return; }",
+                  "pm.test('104.3 unflagged provider still forwards the invalid effort', function () {",
+                  "  pm.expect(pm.response.code, 'expected the upstream 400, got: ' + pm.response.text()).to.eql(400);",
+                  "  pm.expect(pm.response.text(), 'expected the rejection to name the field: ' + pm.response.text()).to.include('reasoning_effort');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"openai/gpt-5-mini\",\n  \"max_completion_tokens\": 64,\n  \"reasoning_effort\": \"__drop_probe__\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"Say hello in one short sentence.\"\n    }\n  ],\n  \"tools\": [\n    {\n      \"type\": \"function\",\n      \"function\": {\n        \"name\": \"get_weather\",\n        \"description\": \"Get the current weather for a city.\",\n        \"parameters\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"city\": {\n              \"type\": \"string\"\n            }\n          },\n          \"required\": [\n            \"city\"\n          ]\n        }\n      }\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/chat/completions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "chat",
+                "completions"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
     }
   ]
 }

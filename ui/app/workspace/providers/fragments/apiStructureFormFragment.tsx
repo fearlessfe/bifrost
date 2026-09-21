@@ -40,6 +40,7 @@ export function ApiStructureFormFragment({ provider }: Props) {
 			does_not_send_done_marker: provider.custom_provider_config?.does_not_send_done_marker ?? false,
 			uses_legacy_max_tokens: provider.custom_provider_config?.uses_legacy_max_tokens ?? false,
 			reasoning_effort_renames: provider.custom_provider_config?.reasoning_effort_renames ?? undefined,
+			drop_reasoning_effort_with_tools: provider.custom_provider_config?.drop_reasoning_effort_with_tools ?? false,
 			wait_for_usage: provider.custom_provider_config?.wait_for_usage ?? false,
 			allowed_requests: {
 				text_completion: provider.custom_provider_config?.allowed_requests?.text_completion ?? true,
@@ -84,6 +85,7 @@ export function ApiStructureFormFragment({ provider }: Props) {
 					does_not_send_done_marker: data.does_not_send_done_marker ?? false,
 					uses_legacy_max_tokens: data.uses_legacy_max_tokens ?? false,
 					reasoning_effort_renames: data.reasoning_effort_renames,
+					drop_reasoning_effort_with_tools: data.drop_reasoning_effort_with_tools ?? false,
 					wait_for_usage: data.wait_for_usage ?? false,
 					allowed_requests: data.allowed_requests,
 					request_path_overrides: cleanPathOverrides(data.request_path_overrides),
@@ -283,6 +285,35 @@ export function ApiStructureFormFragment({ provider }: Props) {
 										low/high/max, so map medium → high)
 									</p>
 									<FormMessage />
+								</FormItem>
+							)}
+						/>
+					)}
+					{!isDoneMarkerToggleDisabled && (
+						<FormField
+							control={form.control}
+							name="drop_reasoning_effort_with_tools"
+							render={({ field }) => (
+								<FormItem>
+									<div className="flex items-center justify-between space-x-2 rounded-lg border p-3">
+										<div className="space-y-0.5">
+											<label htmlFor="drop-reasoning-effort-with-tools" className="text-sm font-medium">
+												Drop Reasoning When Tools Present?
+											</label>
+											<p className="text-muted-foreground text-sm">
+												Strip reasoning from chat completions that carry tools (for upstreams that reject the combination, like azure
+												gpt-5.6). Tools are kept
+											</p>
+										</div>
+										<Switch
+											id="drop-reasoning-effort-with-tools"
+											size="md"
+											checked={field.value}
+											onCheckedChange={field.onChange}
+											disabled={!hasUpdateProviderAccess}
+											data-testid="custom-provider-drop-reasoning-effort-with-tools-switch"
+										/>
+									</div>
 								</FormItem>
 							)}
 						/>

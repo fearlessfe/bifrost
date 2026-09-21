@@ -28,6 +28,7 @@ const formSchema = z.object({
 	does_not_send_done_marker: z.boolean().optional(),
 	uses_legacy_max_tokens: z.boolean().optional(),
 	reasoning_effort_renames: z.record(z.string(), z.string()).optional(),
+	drop_reasoning_effort_with_tools: z.boolean().optional(),
 	wait_for_usage: z.boolean().optional(),
 	allow_private_network: z.boolean().optional(),
 });
@@ -94,6 +95,7 @@ export function AddCustomProviderSheetContent({ show = true, onClose, onSave }: 
 			does_not_send_done_marker: false,
 			uses_legacy_max_tokens: false,
 			reasoning_effort_renames: undefined,
+			drop_reasoning_effort_with_tools: false,
 			wait_for_usage: false,
 			allow_private_network: false,
 		},
@@ -116,6 +118,7 @@ export function AddCustomProviderSheetContent({ show = true, onClose, onSave }: 
 				does_not_send_done_marker: data.does_not_send_done_marker ?? false,
 				uses_legacy_max_tokens: data.uses_legacy_max_tokens ?? false,
 				reasoning_effort_renames: data.reasoning_effort_renames,
+				drop_reasoning_effort_with_tools: data.drop_reasoning_effort_with_tools ?? false,
 				wait_for_usage: data.wait_for_usage ?? false,
 			},
 			network_config: {
@@ -154,6 +157,7 @@ export function AddCustomProviderSheetContent({ show = true, onClose, onSave }: 
 			form.setValue("does_not_send_done_marker", false);
 			form.setValue("uses_legacy_max_tokens", false);
 			form.setValue("reasoning_effort_renames", undefined);
+			form.setValue("drop_reasoning_effort_with_tools", false);
 		}
 	}, [isDoneMarkerToggleDisabled, form]);
 
@@ -395,6 +399,35 @@ export function AddCustomProviderSheetContent({ show = true, onClose, onSave }: 
 											low/high/max, so map medium → high)
 										</p>
 										<FormMessage />
+									</FormItem>
+								)}
+							/>
+						)}
+						{!isDoneMarkerToggleDisabled && (
+							<FormField
+								control={form.control}
+								name="drop_reasoning_effort_with_tools"
+								render={({ field }) => (
+									<FormItem>
+										<div className="flex items-center justify-between space-x-2 rounded-lg border p-3">
+											<div className="space-y-0.5">
+												<label htmlFor="drop-reasoning-effort-with-tools" className="text-sm font-medium">
+													Drop Reasoning When Tools Present?
+												</label>
+												<p className="text-muted-foreground text-sm">
+													Strip reasoning from chat completions that carry tools (for upstreams that reject the combination, like azure
+													gpt-5.6). Tools are kept
+												</p>
+											</div>
+											<Switch
+												id="drop-reasoning-effort-with-tools"
+												size="md"
+												checked={field.value}
+												onCheckedChange={field.onChange}
+												disabled={!hasProviderCreateAccess}
+												data-testid="custom-provider-drop-reasoning-effort-with-tools-switch"
+											/>
+										</div>
 									</FormItem>
 								)}
 							/>

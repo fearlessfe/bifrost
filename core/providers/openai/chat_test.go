@@ -1817,6 +1817,70 @@ func TestToOpenAIChatRequest_CustomProviderReasoningEffortRenames(t *testing.T) 
 	})
 }
 
+func TestToOpenAIChatRequest_CustomProviderDropReasoningEffortWithTools(t *testing.T) {
+	newReq := func(withTools bool) *schemas.BifrostChatRequest {
+		req := &schemas.BifrostChatRequest{
+			Provider: "azure-gpt56",
+			Model:    "gpt-5.6-terra",
+			Input: []schemas.ChatMessage{{
+				Role: schemas.ChatMessageRoleUser,
+				Content: &schemas.ChatMessageContent{
+					ContentStr: schemas.Ptr("hello"),
+				},
+			}},
+			Params: &schemas.ChatParameters{
+				Reasoning: &schemas.ChatReasoning{Effort: schemas.Ptr("medium")},
+			},
+		}
+		if withTools {
+			req.Params.Tools = []schemas.ChatTool{{
+				Type:     "function",
+				Function: &schemas.ChatToolFunction{Name: "get_weather"},
+			}}
+		}
+		return req
+	}
+
+	t.Run("opted in drops reasoning when tools are present", func(t *testing.T) {
+		ctx := schemas.NewBifrostContext(nil, schemas.NoDeadline)
+		ctx.SetValue(schemas.BifrostContextKeyIsCustomProvider, true)
+		ctx.SetValue(schemas.BifrostContextKeyDropReasoningEffortWithTools, true)
+
+		bifrostReq := newReq(true)
+		converted := ToOpenAIChatRequest(ctx, bifrostReq)
+		require.NotNil(t, converted)
+		require.Nil(t, converted.Reasoning)
+		require.Len(t, converted.Tools, 1)
+		// The caller's request must not be mutated — Reasoning is shared by pointer.
+		require.NotNil(t, bifrostReq.Params.Reasoning)
+		require.Equal(t, "medium", *bifrostReq.Params.Reasoning.Effort)
+	})
+
+	t.Run("opted in keeps reasoning when no tools are present", func(t *testing.T) {
+		ctx := schemas.NewBifrostContext(nil, schemas.NoDeadline)
+		ctx.SetValue(schemas.BifrostContextKeyIsCustomProvider, true)
+		ctx.SetValue(schemas.BifrostContextKeyDropReasoningEffortWithTools, true)
+
+		converted := ToOpenAIChatRequest(ctx, newReq(false))
+		require.NotNil(t, converted)
+		require.NotNil(t, converted.Reasoning)
+		require.NotNil(t, converted.Reasoning.Effort)
+		require.Equal(t, "medium", *converted.Reasoning.Effort)
+	})
+
+	t.Run("custom provider without opt-in keeps reasoning with tools", func(t *testing.T) {
+		ctx := schemas.NewBifrostContext(nil, schemas.NoDeadline)
+		ctx.SetValue(schemas.BifrostContextKeyIsCustomProvider, true)
+
+		converted := ToOpenAIChatRequest(ctx, newReq(true))
+		require.NotNil(t, converted)
+		require.NotNil(t, converted.Reasoning)
+		require.NotNil(t, converted.Reasoning.Effort)
+		require.Equal(t, "medium", *converted.Reasoning.Effort)
+		require.Len(t, converted.Tools, 1)
+	})
+}
+
 // When a conversation switches from Gemini to OpenAI, Gemini's thoughtSignature is
 // embedded in the tool call_id as "<baseID>_ts_<sig>" and can exceed OpenAI's 64-char
 // limit. The chat converter must strip it to the base ID on the wire while leaving the

@@ -7011,6 +7011,12 @@ func (bifrost *Bifrost) requestWorker(provider schemas.Provider, config *schemas
 		} else {
 			req.Context.ClearValue(schemas.BifrostContextKeyReasoningEffortRenames)
 		}
+		// Same per-attempt stamping for dropping reasoning when tools are present.
+		if config.CustomProviderConfig != nil && config.CustomProviderConfig.DropReasoningEffortWithTools {
+			req.Context.SetValue(schemas.BifrostContextKeyDropReasoningEffortWithTools, true)
+		} else {
+			req.Context.ClearValue(schemas.BifrostContextKeyDropReasoningEffortWithTools)
+		}
 		// Same set-or-clear discipline: wait_for_usage must never leak onto a fallback provider
 		// that did not declare it, or that provider's stream would hold past finish_reason.
 		if config.CustomProviderConfig != nil && config.CustomProviderConfig.WaitForUsage {

@@ -437,7 +437,7 @@ export class ProvidersPage extends BasePage {
   /**
    * Select a configuration tab
    */
-  async selectConfigTab(tabName: 'network' | 'proxy' | 'performance' | 'governance' | 'debugging'): Promise<void> {
+  async selectConfigTab(tabName: 'api-structure' | 'network' | 'proxy' | 'performance' | 'governance' | 'debugging'): Promise<void> {
     await this.openConfigSheet()
 
     const tab = this.page.getByTestId(`provider-tab-${tabName}`)
@@ -457,6 +457,28 @@ export class ProvidersPage extends BasePage {
       debugging: 'Save Debugging Configuration',
     }
     return this.page.getByRole('button', { name: buttonNames[configType] })
+  }
+
+  getDropReasoningEffortWithToolsSwitch(): Locator {
+    return this.page
+      .locator('[role="dialog"]:visible')
+      .getByTestId('custom-provider-drop-reasoning-effort-with-tools-switch')
+  }
+
+  /**
+   * Set and save the custom provider reasoning/tool compatibility switch.
+   */
+  async setDropReasoningEffortWithTools(enabled: boolean): Promise<void> {
+    await this.selectConfigTab('api-structure')
+
+    const switchEl = this.getDropReasoningEffortWithToolsSwitch()
+    const isChecked = (await switchEl.getAttribute('data-state')) === 'checked'
+    if (isChecked !== enabled) {
+      await switchEl.click()
+    }
+
+    await this.page.getByRole('button', { name: 'Save API Structure Configuration' }).click()
+    await this.waitForSuccessToast()
   }
 
   // ============================================

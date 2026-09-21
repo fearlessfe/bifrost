@@ -195,6 +195,31 @@ test.describe("Providers", () => {
       await expect(providerItem).toBeVisible({ timeout: 15000 });
     });
 
+    test("should persist the custom provider reasoning/tool compatibility setting", async ({
+      providersPage,
+    }) => {
+      const providerData = createCustomProviderData({
+        name: `test-reasoning-tools-${Date.now()}`,
+        baseProviderType: "openai",
+        baseUrl: "https://api.example.com",
+      });
+
+      createdProviders.push(providerData.name);
+
+      await providersPage.createProvider(providerData);
+      await providersPage.selectProvider(providerData.name);
+      await providersPage.setDropReasoningEffortWithTools(true);
+
+      await providersPage.goto();
+      await providersPage.selectProvider(providerData.name);
+      await providersPage.openConfigSheet();
+      await providersPage.selectConfigTab("api-structure");
+
+      const switchEl = providersPage.getDropReasoningEffortWithToolsSwitch();
+      await expect(switchEl).toHaveAttribute("data-state", "checked");
+      await providersPage.page.keyboard.press("Escape");
+    });
+
     test("should cancel custom provider creation", async ({
       providersPage,
     }) => {

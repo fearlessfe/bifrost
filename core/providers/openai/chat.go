@@ -183,6 +183,16 @@ func ToOpenAIChatRequest(ctx *schemas.BifrostContext, bifrostReq *schemas.Bifros
 					openaiReq.MaxCompletionTokens = nil
 				}
 			}
+			// Upstreams that reject reasoning combined with tools (azure gpt-5.6
+			// deployments 400 on tools + reasoning.effort) get reasoning dropped
+			// when the request carries tools, per
+			// custom_provider_config.drop_reasoning_effort_with_tools. Tools stay:
+			// they are the client's functional requirement, reasoning is the knob.
+			if drop, ok := ctx.Value(schemas.BifrostContextKeyDropReasoningEffortWithTools).(bool); ok && drop {
+				if len(openaiReq.Tools) > 0 {
+					openaiReq.Reasoning = nil
+				}
+			}
 			// Upstreams whose accepted effort ladder differs from OpenAI's (GLM
 			// accepts only low/high/max) get the requested value rewritten per
 			// custom_provider_config.reasoning_effort_renames. Reasoning is a

@@ -778,6 +778,80 @@ func TestCustomProviderReasoningEffortRenamesReachWire(t *testing.T) {
 	}
 }
 
+// TestCustomProviderDropReasoningEffortWithToolsReachesWire pins the full worker path
+// for custom_provider_config.drop_reasoning_effort_with_tools: requestWorker must
+// stamp the flag onto the request context so the chat converter drops reasoning
+// before it hits the wire — while tools survive, since they are the client's
+// functional requirement. The converter-level tests in
+// core/providers/openai/chat_test.go set the context keys directly and cannot catch
+// a broken stamping step — this one goes through a real Bifrost client and inspects
+// what the upstream received.
+func TestCustomProviderDropReasoningEffortWithToolsReachesWire(t *testing.T) {
+	bodyCh := make(chan map[string]interface{}, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		var parsed map[string]interface{}
+		if err := json.Unmarshal(body, &parsed); err == nil {
+			select {
+			case bodyCh <- parsed:
+			default:
+			}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"id":"chatcmpl-1","object":"chat.completion","created":1,"model":"gpt-5.6-terra",` +
+			`"choices":[{"index":0,"message":{"role":"assistant","content":"hi"},"finish_reason":"stop"}],` +
+			`"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}`))
+	}))
+	defer server.Close()
+
+	const customProvider = schemas.ModelProvider("custom-openai")
+	account := NewMockAccount()
+	account.AddProviderWithBaseURL(customProvider, 1, 1, server.URL)
+	account.configs[customProvider].NetworkConfig.MaxRetries = 0
+	account.SetCustomProviderConfig(customProvider, &schemas.CustomProviderConfig{
+		BaseProviderType:             schemas.OpenAI,
+		DropReasoningEffortWithTools: true,
+	})
+	account.SetKeysForProvider(customProvider, []schemas.Key{
+		{ID: "custom-key", Value: *schemas.NewSecretVar("sk-custom"), Models: schemas.WhiteList{"*"}, Weight: 100},
+	})
+
+	client := newStreamTestClient(t, account)
+	ctx, cancel := schemas.NewBifrostContextWithCancel(context.Background())
+	defer cancel()
+
+	_, bifrostErr := client.ChatCompletionRequest(ctx, &schemas.BifrostChatRequest{
+		Provider: customProvider,
+		Model:    "gpt-5.6-terra",
+		Input: []schemas.ChatMessage{{
+			Role:    schemas.ChatMessageRoleUser,
+			Content: &schemas.ChatMessageContent{ContentStr: Ptr("hi")},
+		}},
+		Params: &schemas.ChatParameters{
+			Reasoning: &schemas.ChatReasoning{Effort: Ptr("medium")},
+			Tools: []schemas.ChatTool{{
+				Type:     "function",
+				Function: &schemas.ChatToolFunction{Name: "get_weather"},
+			}},
+		},
+	})
+	if bifrostErr != nil {
+		t.Fatalf("chat request failed: %v", bifrostErr)
+	}
+
+	select {
+	case body := <-bodyCh:
+		if _, present := body["reasoning_effort"]; present {
+			t.Errorf("expected reasoning_effort dropped on the wire when tools are present (body: %v)", body)
+		}
+		if tools, ok := body["tools"].([]interface{}); !ok || len(tools) != 1 {
+			t.Errorf("expected tools to survive on the wire, got %v (body: %v)", body["tools"], body)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("mock upstream never received a request")
+	}
+}
+
 // Test that transientServerStatusCodes are properly defined.
 // These are upstream-side failures unrelated to the credential — the same key is retried.
 func TestTransientServerStatusCodes(t *testing.T) {

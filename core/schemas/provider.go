@@ -544,7 +544,12 @@ type CustomProviderConfig struct {
 	// egress, for upstreams whose accepted ladder differs from OpenAI's (e.g. GLM
 	// accepts only low/high/max, so {"medium": "high"}).
 	ReasoningEffortRenames map[string]string `json:"reasoning_effort_renames,omitempty"`
-	WaitForUsage           bool              `json:"wait_for_usage"` // With DoesNotSendDoneMarker, keep reading past finish_reason so the trailing usage-only chunk is not dropped (#7143). A silent upstream then ends on network_config.stream_idle_timeout_in_seconds
+	// DropReasoningEffortWithTools strips reasoning on chat completions egress
+	// when the request carries tools, for upstreams that reject the combination
+	// (e.g. azure gpt-5.6 deployments 400 on tools + reasoning.effort). Tools
+	// stay: they are the client's functional requirement, reasoning is the knob.
+	DropReasoningEffortWithTools bool `json:"drop_reasoning_effort_with_tools,omitempty"`
+	WaitForUsage                 bool `json:"wait_for_usage"` // With DoesNotSendDoneMarker, keep reading past finish_reason so the trailing usage-only chunk is not dropped (#7143). A silent upstream then ends on network_config.stream_idle_timeout_in_seconds
 }
 
 // IsOperationAllowed checks if a specific operation is allowed for this custom provider
