@@ -207,6 +207,10 @@ type EmbeddingResponseConverter func(ctx *schemas.BifrostContext, resp *schemas.
 // It takes a BifrostRerankResponse and returns the format expected by the specific integration.
 type RerankResponseConverter func(ctx *schemas.BifrostContext, resp *schemas.BifrostRerankResponse) (interface{}, error)
 
+// DecisionResponseConverter is a function that converts BifrostDecisionResponse to integration-specific format.
+// It takes a BifrostDecisionResponse and returns the format expected by the specific integration.
+type DecisionResponseConverter func(ctx *schemas.BifrostContext, resp *schemas.BifrostDecisionResponse) (interface{}, error)
+
 // OCRResponseConverter is a function that converts BifrostOCRResponse to integration-specific format.
 // It takes a BifrostOCRResponse and returns the format expected by the specific integration.
 type OCRResponseConverter func(ctx *schemas.BifrostContext, resp *schemas.BifrostOCRResponse) (interface{}, error)
@@ -457,6 +461,7 @@ const (
 	RouteConfigTypeGenAI     RouteConfigType = "genai"
 	RouteConfigTypeBedrock   RouteConfigType = "bedrock"
 	RouteConfigTypeCohere    RouteConfigType = "cohere"
+	RouteConfigTypeTypesafe  RouteConfigType = "typesafe"
 )
 
 // RouteConfig defines the configuration for a single route in an integration.
@@ -487,6 +492,7 @@ type RouteConfig struct {
 	AsyncResponsesResponseConverter        AsyncResponsesResponseConverter        // Function to convert AsyncJobResponse to integration format (SHOULD NOT BE NIL)
 	EmbeddingResponseConverter             EmbeddingResponseConverter             // Function to convert BifrostEmbeddingResponse to integration format (SHOULD NOT BE NIL)
 	RerankResponseConverter                RerankResponseConverter                // Function to convert BifrostRerankResponse to integration format
+	DecisionResponseConverter              DecisionResponseConverter              // Function to convert BifrostDecisionResponse to integration format
 	OCRResponseConverter                   OCRResponseConverter                   // Function to convert BifrostOCRResponse to integration format
 	SpeechResponseConverter                SpeechResponseConverter                // Function to convert BifrostSpeechResponse to integration format (SHOULD NOT BE NIL)
 	TranscriptionResponseConverter         TranscriptionResponseConverter         // Function to convert BifrostTranscriptionResponse to integration format (SHOULD NOT BE NIL)
@@ -984,45 +990,21 @@ func (g *GenericRouter) handleNonStreamingRequest(ctx *fasthttp.RequestCtx, conf
 		var listModelsResponse *schemas.BifrostListModelsResponse
 		var bifrostErr *schemas.BifrostError
 
-		// Fast path: a governed request is answered from the local model catalog
-		// (filtered by the access its credential resolved to) instead of fanning
-		// out to every provider's list-models endpoint. Falls through to the
-		// upstream path when governance is not loaded, no access was resolved (a
-		// request that presented nothing lists what it always listed), or no
-		// catalog is configured.
-		if catalogProvider, ok := g.handlerStore.(modelCatalogProvider); ok && catalogProvider.GetModelCatalog() != nil {
-			access, governed, admissionErr := lib.EvaluateListModelsAccess(g.handlerStore, bifrostCtx, bifrostReq.ListModelsRequest.Provider)
-			if admissionErr != nil {
-				g.sendError(ctx, bifrostCtx, config.ErrorConverter, admissionErr)
-				return
+		if bifrostReq.ListModelsRequest.Provider != "" {
+			listModelsResponse, bifrostErr = g.client.ListModelsRequest(bifrostCtx, bifrostReq.ListModelsRequest)
+		} else {
+			// Ask only the providers this request may reach, the same way the native models
+			// route does, instead of asking every configured provider for models that are
+			// dropped from the answer anyway.
+			if g.accessResolver != nil {
+				g.accessResolver.NarrowListModelsProviders(bifrostCtx)
 			}
-			if governed {
-				afterID, _ := bifrostReq.ListModelsRequest.ExtraParams["after_id"].(string)
-				beforeID, _ := bifrostReq.ListModelsRequest.ExtraParams["before_id"].(string)
-				listModelsResponse = lib.CatalogListModelsResponseWithCursors(
-					catalogProvider.GetModelCatalog(), access, bifrostReq.ListModelsRequest.Provider,
-					bifrostReq.ListModelsRequest.PageSize, bifrostReq.ListModelsRequest.PageToken, afterID, beforeID,
-				)
-			}
+			listModelsResponse, bifrostErr = g.client.ListAllModels(bifrostCtx, bifrostReq.ListModelsRequest)
 		}
 
-		if listModelsResponse == nil {
-			if bifrostReq.ListModelsRequest.Provider != "" {
-				listModelsResponse, bifrostErr = g.client.ListModelsRequest(bifrostCtx, bifrostReq.ListModelsRequest)
-			} else {
-				// Ask only the providers this request may reach, the same way the native models
-				// route does, instead of asking every configured provider for models that are
-				// dropped from the answer anyway.
-				if g.accessResolver != nil {
-					g.accessResolver.NarrowListModelsProviders(bifrostCtx)
-				}
-				listModelsResponse, bifrostErr = g.client.ListAllModels(bifrostCtx, bifrostReq.ListModelsRequest)
-			}
-
-			if bifrostErr != nil {
-				g.sendError(ctx, bifrostCtx, config.ErrorConverter, bifrostErr)
-				return
-			}
+		if bifrostErr != nil {
+			g.sendError(ctx, bifrostCtx, config.ErrorConverter, bifrostErr)
+			return
 		}
 
 		if config.PostCallback != nil {
@@ -1156,6 +1138,29 @@ func (g *GenericRouter) handleNonStreamingRequest(ctx *fasthttp.RequestCtx, conf
 			response, err = config.RerankResponseConverter(bifrostCtx, rerankResponse)
 		} else {
 			response = rerankResponse
+		}
+
+	case bifrostReq.DecisionRequest != nil:
+		decisionResponse, bifrostErr := g.client.DecisionRequest(bifrostCtx, bifrostReq.DecisionRequest)
+		if bifrostErr != nil {
+			g.sendError(ctx, bifrostCtx, config.ErrorConverter, bifrostErr)
+			return
+		}
+		if config.PostCallback != nil {
+			if err := config.PostCallback(ctx, req, decisionResponse); err != nil {
+				g.sendError(ctx, bifrostCtx, config.ErrorConverter, newBifrostError(err, "failed to execute post-request callback"))
+				return
+			}
+		}
+		if decisionResponse == nil {
+			g.sendError(ctx, bifrostCtx, config.ErrorConverter, newBifrostError(nil, "Bifrost response is nil after post-request callback"))
+			return
+		}
+		bifrostExtraFields = decisionResponse.ExtraFields
+		if config.DecisionResponseConverter != nil {
+			response, err = config.DecisionResponseConverter(bifrostCtx, decisionResponse)
+		} else {
+			response = decisionResponse
 		}
 
 	case bifrostReq.OCRRequest != nil:
@@ -2818,9 +2823,15 @@ func (g *GenericRouter) handleStreamingRequest(ctx *fasthttp.RequestCtx, config 
 //
 // CONTEXT CANCELLATION:
 //
-// The cancel function is called ONLY when client disconnects are detected via write errors.
-// Bifrost handles cleanup internally for normal completion and errors, so we only cancel
-// upstream streams when write errors indicate the client has disconnected.
+// The producer goroutine owns the cancel function and calls it on every exit path: eagerly
+// when a write error reveals the client has disconnected (so the upstream stream is torn down
+// at once), and otherwise from its deferred cleanup once the stream has finished.
+//
+// Cancelling on normal completion is not optional. ConvertToBifrostContext starts a
+// client-disconnect watcher per request (lib.startClientDisconnectWatcher), and that goroutine
+// only stops when this context is cancelled or the client socket dies. Returning without
+// cancelling leaks the watcher and the entire request-scoped BifrostContext for as long as the
+// client keeps its connection open.
 func (g *GenericRouter) handleStreaming(ctx *fasthttp.RequestCtx, bifrostCtx *schemas.BifrostContext, config RouteConfig, streamChan chan *schemas.BifrostStreamChunk, cancel context.CancelFunc) {
 	// Signal to tracing middleware that trace completion should be deferred
 	// The streaming callback will complete the trace after the stream ends
@@ -2885,6 +2896,15 @@ func (g *GenericRouter) handleStreaming(ctx *fasthttp.RequestCtx, bifrostCtx *sc
 		}
 
 		defer func() {
+			// Ends the client-disconnect watcher ConvertToBifrostContext started for this
+			// request. The watcher's only other exits are the client socket dying or an
+			// explicit cancel, and its parent (fasthttp's RequestCtx) fires Done only on
+			// server shutdown, so a stream that completed normally used to leave the
+			// watcher polling forever and pinning this whole BifrostContext until the
+			// client's keep-alive connection closed. Registered first so it runs last,
+			// leaving traceCompleter and the post-hooks below an uncancelled context.
+			// cancel is idempotent, so the explicit error-path calls still stand.
+			defer cancel()
 			// Must run before reader.Done(): closing eventCh while the heartbeat goroutine
 			// could still be mid-send on it panics ("send on closed channel"). See
 			// lib.StopSSEHeartbeat's doc for the full ordering rationale.

@@ -349,6 +349,7 @@ type AllowedRequests struct {
 	Compaction            bool `json:"compaction"`
 	Embedding             bool `json:"embedding"`
 	Rerank                bool `json:"rerank"`
+	Decision              bool `json:"decisions"`
 	OCR                   bool `json:"ocr"`
 	Speech                bool `json:"speech"`
 	SpeechStream          bool `json:"speech_stream"`
@@ -434,6 +435,8 @@ func (ar *AllowedRequests) IsOperationAllowed(operation RequestType) bool {
 		return ar.Embedding
 	case RerankRequest:
 		return ar.Rerank
+	case DecisionRequest:
+		return ar.Decision
 	case OCRRequest:
 		return ar.OCR
 	case SpeechRequest:
@@ -539,6 +542,7 @@ type CustomProviderConfig struct {
 	AllowedRequests       *AllowedRequests       `json:"allowed_requests,omitempty"`       // Allowed requests for the custom provider
 	RequestPathOverrides  map[RequestType]string `json:"request_path_overrides,omitempty"` // Mapping of request type to its custom path which will override the default path of the provider (not allowed for Bedrock)
 	DoesNotSendDoneMarker bool                   `json:"does_not_send_done_marker"`        // Upstream ends its SSE stream after finish_reason without sending data: [DONE]
+	WaitForUsage          bool                   `json:"wait_for_usage"`                   // With DoesNotSendDoneMarker, keep reading past finish_reason so the trailing usage-only chunk is not dropped (#7143). A silent upstream then ends on network_config.stream_idle_timeout_in_seconds
 	UsesLegacyMaxTokens   bool                   `json:"uses_legacy_max_tokens,omitempty"` // Upstream follows the legacy OpenAI spec: send max_tokens instead of max_completion_tokens on chat completions
 	// ReasoningEffortRenames rewrites reasoning effort values on chat completions
 	// egress, for upstreams whose accepted ladder differs from OpenAI's (e.g. GLM
@@ -549,7 +553,6 @@ type CustomProviderConfig struct {
 	// (e.g. azure gpt-5.6 deployments 400 on tools + reasoning.effort). Tools
 	// stay: they are the client's functional requirement, reasoning is the knob.
 	DropReasoningEffortWithTools bool `json:"drop_reasoning_effort_with_tools,omitempty"`
-	WaitForUsage                 bool `json:"wait_for_usage"` // With DoesNotSendDoneMarker, keep reading past finish_reason so the trailing usage-only chunk is not dropped (#7143). A silent upstream then ends on network_config.stream_idle_timeout_in_seconds
 	// ReasoningEffortRenamesByModel scopes renames to individual models, keyed by
 	// the model name as sent on the wire. A matching model entry wins over
 	// ReasoningEffortRenames; models without an entry fall back to the
@@ -721,6 +724,8 @@ type Provider interface {
 	Embedding(ctx *BifrostContext, key Key, request *BifrostEmbeddingRequest) (*BifrostEmbeddingResponse, *BifrostError)
 	// Rerank performs a rerank request to reorder documents by relevance to a query
 	Rerank(ctx *BifrostContext, key Key, request *BifrostRerankRequest) (*BifrostRerankResponse, *BifrostError)
+	// Decision performs an decision request against an annotated function-tool definition (Typesafe-only; other providers return unsupported)
+	Decision(ctx *BifrostContext, key Key, request *BifrostDecisionRequest) (*BifrostDecisionResponse, *BifrostError)
 	// OCR performs an optical character recognition request on a document
 	OCR(ctx *BifrostContext, key Key, request *BifrostOCRRequest) (*BifrostOCRResponse, *BifrostError)
 	// Speech performs a text to speech request

@@ -29,13 +29,14 @@ type BifrostConfig struct {
 	OAuth2Provider     OAuth2Provider
 	MCPHeadersProvider MCPHeadersProvider // Backend for MCPAuthTypePerUserHeaders credential storage; nil disables per-user-headers auth (resolver errors at use)
 	Logger             Logger
-	Tracer             Tracer        // Tracer for distributed tracing (nil = NoOpTracer)
-	InitialPoolSize    int           // Initial pool size for sync pools in Bifrost. Higher values will reduce memory allocations but will increase memory usage.
-	DropExcessRequests bool          // If true, in cases where the queue is full, requests will not wait for the queue to be empty and will be dropped instead.
-	MCPConfig          *MCPConfig    // MCP (Model Context Protocol) configuration for tool integration
-	KeySelector        KeySelector   // Custom key selector function
-	KeyPoolFilter      KeyPoolFilter // Optional hook to filter available keys before selection; nil = all keys eligible
-	KVStore            KVStore       // shared KV store for clustering/session stickiness; nil = disabled
+	Tracer             Tracer          // Tracer for distributed tracing (nil = NoOpTracer)
+	InitialPoolSize    int             // Initial pool size for sync pools in Bifrost. Higher values will reduce memory allocations but will increase memory usage.
+	DropExcessRequests bool            // If true, in cases where the queue is full, requests will not wait for the queue to be empty and will be dropped instead.
+	MCPConfig          *MCPConfig      // MCP (Model Context Protocol) configuration for tool integration
+	KeySelector        KeySelector     // Custom key selector function
+	KeyPoolFilter      KeyPoolFilter   // Optional hook to filter available keys before selection; nil = all keys eligible
+	KVStore            KVStore         // shared KV store for clustering/session stickiness; nil = disabled
+	SessionAffinity    SessionAffinity // Decides which key a session stays on; nil = Bifrost's own default, which needs KVStore to bind anything
 	ModelCatalog       ModelInfoProvider
 }
 
@@ -75,6 +76,7 @@ const (
 	Wafer         ModelProvider = "wafer"
 	GithubCopilot ModelProvider = "github-copilot"
 	Databricks    ModelProvider = "databricks"
+	Typesafe      ModelProvider = "typesafe"
 )
 
 // SupportedBaseProviders is the list of base providers allowed for custom providers.
@@ -122,6 +124,7 @@ var StandardProviders = []ModelProvider{
 	Wafer,
 	GithubCopilot,
 	Databricks,
+	Typesafe,
 }
 
 // RequestType represents the type of request being made to a provider.
@@ -189,6 +192,7 @@ const (
 	ContainerFileContentRequest    RequestType = "container_file_content"
 	ContainerFileDeleteRequest     RequestType = "container_file_delete"
 	RerankRequest                  RequestType = "rerank"
+	DecisionRequest                RequestType = "decisions"
 	OCRRequest                     RequestType = "ocr"
 	CountTokensRequest             RequestType = "count_tokens"
 	CompactionRequest              RequestType = "compaction"
@@ -347,7 +351,7 @@ const (
 	BifrostContextKeyDoesNotSendDoneMarker               BifrostContextKey = "bifrost-does-not-send-done-marker"                // bool (set by bifrost from custom_provider_config.does_not_send_done_marker - DO NOT SET THIS MANUALLY) — ends the SSE read loop on finish_reason instead of waiting for [DONE]
 	BifrostContextKeyUsesLegacyMaxTokens                 BifrostContextKey = "bifrost-uses-legacy-max-tokens"                   // bool (set by bifrost from custom_provider_config.uses_legacy_max_tokens - DO NOT SET THIS MANUALLY) — egress sends max_tokens instead of max_completion_tokens
 	BifrostContextKeyReasoningEffortRenames              BifrostContextKey = "bifrost-reasoning-effort-renames"                 // map[string]string (set by bifrost from custom_provider_config.reasoning_effort_renames - DO NOT SET THIS MANUALLY) — egress rewrites reasoning effort values per the map
-	BifrostContextKeyDropReasoningEffortWithTools      BifrostContextKey = "bifrost-drop-reasoning-effort-with-tools"      // bool (set by bifrost from custom_provider_config.drop_reasoning_effort_with_tools - DO NOT SET THIS MANUALLY) — egress drops reasoning when the request carries tools
+	BifrostContextKeyDropReasoningEffortWithTools        BifrostContextKey = "bifrost-drop-reasoning-effort-with-tools"         // bool (set by bifrost from custom_provider_config.drop_reasoning_effort_with_tools - DO NOT SET THIS MANUALLY) — egress drops reasoning when the request carries tools
 	BifrostContextKeyWaitForUsage                        BifrostContextKey = "bifrost-wait-for-usage"                           // bool (set by bifrost from custom_provider_config.wait_for_usage - DO NOT SET THIS MANUALLY) — keeps the SSE read loop open past finish_reason until the trailing usage-only chunk arrives
 	BifrostContextKeyModelReasoningEffortRenames         BifrostContextKey = "bifrost-model-reasoning-effort-renames"           // map[string]map[string]string (set by bifrost from custom_provider_config.reasoning_effort_renames_by_model - DO NOT SET THIS MANUALLY) — per-model overrides checked before the provider-wide map
 	BifrostContextKeyHTTPRequestType                     BifrostContextKey = "bifrost-http-request-type"                        // RequestType (set by bifrost - DO NOT SET THIS MANUALLY)
@@ -416,6 +420,7 @@ const (
 	BifrostContextKeySSEReaderFactory                    BifrostContextKey = "bifrost-sse-reader-factory"                 // *providerUtils.SSEReaderFactory (set by enterprise — replaces default bufio.Scanner SSE readers with streaming readers)
 	BifrostContextKeySessionID                           BifrostContextKey = "bifrost-session-id"                         // string session ID for the request (session stickiness)
 	BifrostContextKeySessionTTL                          BifrostContextKey = "bifrost-session-ttl"                        // time.Duration session TTL for the request (session stickiness)
+	BifrostContextKeySessionAffinity                     BifrostContextKey = "bifrost-session-affinity"                   // bool: whether the request lets its session decide where it goes (default true)
 	BifrostContextKeyMCPExtraHeaders                     BifrostContextKey = "bifrost-mcp-extra-headers"                  // map[string][]string (these headers are forwarded only to the MCP while tool execution if they are in the allowlist of the MCP client)
 	BifrostContextKeyMCPLogID                            BifrostContextKey = "bifrost-mcp-log-id"                         // string (unique UUID for each MCP tool log entry - set per goroutine by agent executor - DO NOT SET THIS MANUALLY)
 	BifrostContextKeyMCPHealthCheckRequest               BifrostContextKey = "bifrost-mcp-health-check-request"           // bool (set by bifrost - DO NOT SET THIS MANUALLY) - true when the MCP connect/ping/list-tools request was generated by bifrost itself (periodic health checks, or the admin connection-verification probe) rather than originating from a caller
@@ -474,6 +479,11 @@ const (
 	RoutingEngineLoadbalancing  = "loadbalancing"
 	RoutingEngineModelCatalog   = "model-catalog"
 	RoutingEngineCircuitBreaker = "circuit-breaker"
+	// RoutingEngineSessionAffinity marks decisions a session made for the request:
+	// staying on the provider or key that served it before, ahead of what the
+	// routing engines proposed. Recorded so the request's trail says why it went
+	// where it went.
+	RoutingEngineSessionAffinity = "session-affinity"
 	// RoutingEngineCore represents the Bifrost core orchestrator's own
 	// routing decisions — primarily fallback transitions. Emitted when the
 	// primary attempt fails and core advances through the fallback chain so
@@ -557,6 +567,7 @@ type LargePayloadMetadata struct {
 type Fallback struct {
 	Provider ModelProvider `json:"provider"`
 	Model    string        `json:"model"`
+	KeyID    string        `json:"key_id,omitempty"` // pins a provider key for this attempt; empty means normal key selection
 }
 
 // BifrostRequest is the request struct for all bifrost requests.
@@ -587,6 +598,7 @@ type BifrostRequest struct {
 	CompactionRequest            *BifrostCompactionRequest
 	EmbeddingRequest             *BifrostEmbeddingRequest
 	RerankRequest                *BifrostRerankRequest
+	DecisionRequest              *BifrostDecisionRequest
 	OCRRequest                   *BifrostOCRRequest
 	SpeechRequest                *BifrostSpeechRequest
 	TranscriptionRequest         *BifrostTranscriptionRequest
@@ -655,6 +667,8 @@ func (br *BifrostRequest) GetRequestFields() (provider ModelProvider, model stri
 		return br.EmbeddingRequest.Provider, br.EmbeddingRequest.Model, br.EmbeddingRequest.Fallbacks
 	case br.RerankRequest != nil:
 		return br.RerankRequest.Provider, br.RerankRequest.Model, br.RerankRequest.Fallbacks
+	case br.DecisionRequest != nil:
+		return br.DecisionRequest.Provider, br.DecisionRequest.Model, br.DecisionRequest.Fallbacks
 	case br.OCRRequest != nil:
 		return br.OCRRequest.Provider, br.OCRRequest.Model, br.OCRRequest.Fallbacks
 	case br.SpeechRequest != nil:
@@ -808,6 +822,8 @@ func (br *BifrostRequest) SetProvider(provider ModelProvider) {
 		br.EmbeddingRequest.Provider = provider
 	case br.RerankRequest != nil:
 		br.RerankRequest.Provider = provider
+	case br.DecisionRequest != nil:
+		br.DecisionRequest.Provider = provider
 	case br.OCRRequest != nil:
 		br.OCRRequest.Provider = provider
 	case br.SpeechRequest != nil:
@@ -863,6 +879,8 @@ func (br *BifrostRequest) SetModel(model string) {
 		br.EmbeddingRequest.Model = model
 	case br.RerankRequest != nil:
 		br.RerankRequest.Model = model
+	case br.DecisionRequest != nil:
+		br.DecisionRequest.Model = model
 	case br.OCRRequest != nil:
 		br.OCRRequest.Model = model
 	case br.SpeechRequest != nil:
@@ -920,6 +938,8 @@ func (br *BifrostRequest) SetFallbacks(fallbacks []Fallback) {
 		br.EmbeddingRequest.Fallbacks = fallbacks
 	case br.RerankRequest != nil:
 		br.RerankRequest.Fallbacks = fallbacks
+	case br.DecisionRequest != nil:
+		br.DecisionRequest.Fallbacks = fallbacks
 	case br.OCRRequest != nil:
 		br.OCRRequest.Fallbacks = fallbacks
 	case br.SpeechRequest != nil:
@@ -963,6 +983,8 @@ func (br *BifrostRequest) SetRawRequestBody(rawRequestBody []byte) {
 		br.EmbeddingRequest.RawRequestBody = rawRequestBody
 	case br.RerankRequest != nil:
 		br.RerankRequest.RawRequestBody = rawRequestBody
+	case br.DecisionRequest != nil:
+		br.DecisionRequest.RawRequestBody = rawRequestBody
 	case br.OCRRequest != nil:
 		br.OCRRequest.RawRequestBody = rawRequestBody
 	case br.SpeechRequest != nil:
@@ -1138,6 +1160,7 @@ type BifrostResponse struct {
 	CompactionResponse            *BifrostCompactionResponse
 	EmbeddingResponse             *BifrostEmbeddingResponse
 	RerankResponse                *BifrostRerankResponse
+	DecisionResponse              *BifrostDecisionResponse
 	OCRResponse                   *BifrostOCRResponse
 	SpeechResponse                *BifrostSpeechResponse
 	SpeechStreamResponse          *BifrostSpeechStreamResponse
@@ -1201,6 +1224,8 @@ func (r *BifrostResponse) GetExtraFields() *BifrostResponseExtraFields {
 		return &r.EmbeddingResponse.ExtraFields
 	case r.RerankResponse != nil:
 		return &r.RerankResponse.ExtraFields
+	case r.DecisionResponse != nil:
+		return &r.DecisionResponse.ExtraFields
 	case r.OCRResponse != nil:
 		return &r.OCRResponse.ExtraFields
 	case r.SpeechResponse != nil:
@@ -1469,6 +1494,11 @@ func (r *BifrostResponse) PopulateExtraFields(requestType RequestType, provider 
 		r.RerankResponse.ExtraFields.Provider = provider
 		r.RerankResponse.ExtraFields.OriginalModelRequested = originalModelRequested
 		r.RerankResponse.ExtraFields.ResolvedModelUsed = resolvedModel
+	case r.DecisionResponse != nil:
+		r.DecisionResponse.ExtraFields.RequestType = requestType
+		r.DecisionResponse.ExtraFields.Provider = provider
+		r.DecisionResponse.ExtraFields.OriginalModelRequested = originalModelRequested
+		r.DecisionResponse.ExtraFields.ResolvedModelUsed = resolvedModel
 	case r.SpeechResponse != nil:
 		r.SpeechResponse.ExtraFields.RequestType = requestType
 		r.SpeechResponse.ExtraFields.Provider = provider

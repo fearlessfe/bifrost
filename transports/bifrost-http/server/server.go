@@ -193,10 +193,6 @@ type ServerCallbacks interface {
 	// for the listing routes that run outside the request pipeline and so cannot wait for a hook
 	// to resolve it.
 	ResolveAccess(ctx *schemas.BifrostContext) (schemas.Access, error)
-	// EvaluateListModelsAccess runs the governance admission funnel for a list-models request
-	// without routing it, returning the request's access for the caller to filter the listing
-	// with. governed is false when no governance plugin is loaded.
-	EvaluateListModelsAccess(ctx *schemas.BifrostContext, provider schemas.ModelProvider) (access schemas.Access, governed bool, bErr *schemas.BifrostError)
 	// The models listing narrows its provider fan-out to what the request may reach.
 	NarrowListModelsProviders(bifrostCtx *schemas.BifrostContext)
 }
@@ -325,6 +321,21 @@ func (s *GovernanceInMemoryStore) GetConfiguredProviders() map[schemas.ModelProv
 	s.Config.Mu.RLock()
 	defer s.Config.Mu.RUnlock()
 	return s.Config.Providers
+}
+
+// GetConfiguredProviderNames builds the name slice under the lock, because provider edits write to
+// the map GetConfiguredProviders hands back in place: ranging that map after the lock is released
+// is a concurrent iteration and write, which is fatal rather than merely stale.
+func (s *GovernanceInMemoryStore) GetConfiguredProviderNames() []string {
+	providers, err := s.Config.GetAllProviders()
+	if err != nil {
+		return nil
+	}
+	names := make([]string, 0, len(providers))
+	for _, provider := range providers {
+		names = append(names, string(provider))
+	}
+	return names
 }
 
 func (s *GovernanceInMemoryStore) GetMCPClientsAllowedByDefault() map[string]string {
@@ -1536,37 +1547,6 @@ func (s *BifrostHTTPServer) ResolveAccess(ctx *schemas.BifrostContext) (schemas.
 	return governancePlugin.ResolveAccess(ctx)
 }
 
-// EvaluateListModelsAccess runs the governance admission funnel for a list-models request
-// without routing it: every check a per-provider fan-out request would face in PreLLMHook
-// (mandatory key, credential validity, access) runs here once, and spending checks are
-// skipped because a listing spends nothing. The resolved access is returned for the caller
-// to filter the listing with.
-//
-// governed is false when no governance plugin is loaded — the caller falls back to the
-// upstream fan-out path in that case, exactly as a deployment without governance behaves
-// today.
-func (s *BifrostHTTPServer) EvaluateListModelsAccess(ctx *schemas.BifrostContext, provider schemas.ModelProvider) (schemas.Access, bool, *schemas.BifrostError) {
-	governancePlugin, err := s.getGovernancePlugin()
-	if err != nil {
-		return nil, false, nil
-	}
-	ctx.SetValue(schemas.BifrostContextKeySkipBudgetAndRateLimits, true)
-	if _, bifrostErr := governancePlugin.Evaluate(ctx, &governance.EvaluationRequest{
-		RequestType: schemas.ListModelsRequest,
-		Provider:    provider,
-	}); bifrostErr != nil {
-		return nil, true, bifrostErr
-	}
-	access, err := governancePlugin.ResolveAccess(ctx)
-	if err != nil {
-		return nil, true, &schemas.BifrostError{
-			IsBifrostError: false,
-			Error:          &schemas.ErrorField{Message: err.Error()},
-		}
-	}
-	return access, true, nil
-}
-
 // NarrowListModelsProviders implements AccessResolver, so the native models route and the
 // integration ones narrow their fan-out by one rule rather than each carrying a copy of it.
 //
@@ -2472,7 +2452,6 @@ func (s *BifrostHTTPServer) RegisterAPIRoutes(ctx context.Context, callbacks Ser
 	configHandler := handlers.NewConfigHandler(callbacks, s.Config)
 	pluginsHandler := handlers.NewPluginsHandler(callbacks, s.Config.ConfigStore)
 	sessionHandler := handlers.NewSessionHandler(s.Config.ConfigStore, s.WSTicketStore)
-	serviceTokenHandler := handlers.NewServiceTokenHandler(s.Config.ConfigStore)
 	promptsHandler := handlers.NewPromptsHandler(s.Config.ConfigStore, callbacks)
 	featureFlagsHandler := handlers.NewFeatureFlagsHandler(s.Config.FeatureFlags, s.Config.ConfigStore)
 	// Going ahead with API handlers
@@ -2501,9 +2480,6 @@ func (s *BifrostHTTPServer) RegisterAPIRoutes(ctx context.Context, callbacks Ser
 	}
 	if sessionHandler != nil {
 		sessionHandler.RegisterRoutes(s.Router, middlewares...)
-	}
-	if serviceTokenHandler != nil {
-		serviceTokenHandler.RegisterRoutes(s.Router, middlewares...)
 	}
 	if promptsHandler != nil {
 		promptsHandler.RegisterRoutes(s.Router, middlewares...)

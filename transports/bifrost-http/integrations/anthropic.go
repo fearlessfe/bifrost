@@ -137,6 +137,9 @@ func createAnthropicMessagesRouteConfig(pathPrefix string, logger schemas.Logger
 				if anthropicReq, ok := req.(*anthropic.AnthropicMessageRequest); ok {
 					bifrostReq := anthropicReq.ToBifrostResponsesRequest(ctx)
 					normalizeBifrostInputContentBlocks(bifrostReq)
+					// Input is still owned here. Strip once before hooks/fallbacks
+					// share it, avoiding a conversation-slice copy per GPT attempt.
+					bifrostReq.ExtractAnthropicBillingHeader()
 					return &schemas.BifrostRequest{
 						ResponsesRequest: bifrostReq,
 					}, nil
@@ -335,7 +338,6 @@ func CreateAnthropicListModelsRouteConfigs(pathPrefix string, handlerStore lib.H
 				return nil, errors.New("invalid request type")
 			},
 			ListModelsResponseConverter: func(ctx *schemas.BifrostContext, resp *schemas.BifrostListModelsResponse) (interface{}, error) {
-				lib.StripProviderPrefixesFromModelList(resp, lib.PreferredModelPriorityFn(schemas.Anthropic))
 				return anthropic.ToAnthropicListModelsResponse(resp), nil
 			},
 			ErrorConverter: func(ctx *schemas.BifrostContext, err *schemas.BifrostError) interface{} {

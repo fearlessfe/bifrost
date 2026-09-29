@@ -475,7 +475,6 @@ var configstoreMigrationSteps = []migrationStep{
 	{IDs: []string{"add_input_cost_per_query_column"}, run: migrationAddInputCostPerQueryColumn},
 	{IDs: []string{"add_ultrafast_pricing_columns"}, run: migrationAddUltrafastPricingColumns},
 	{IDs: []string{"add_image_size_quality_pricing_columns"}, run: migrationAddImageSizeQualityPricingColumns},
-	{IDs: []string{"add_service_tokens_table"}, run: migrationAddServiceTokensTable},
 	{IDs: []string{"add_batch_jobs_attribution_columns"}, run: migrationAddBatchJobsAttributionColumns},
 	{IDs: []string{"add_vk_rotation_cooldown_columns"}, run: migrationAddVKRotationCooldownColumns},
 	{IDs: []string{"add_vk_rotation_cooldown_client_column"}, run: migrationAddVKRotationCooldownClientColumn},
@@ -12938,23 +12937,6 @@ func migrationAddImageMegapixelTierPricingColumns(ctx context.Context, db *gorm.
 		return fmt.Errorf("error running add_image_megapixel_tier_pricing_columns migration: %s", err.Error())
 	}
 	return nil
-}
-
-// migrationAddServiceTokensTable creates the service_tokens table for
-// long-lived service tokens (hash-only storage, see tables.ServiceTokensTable).
-func migrationAddServiceTokensTable(ctx context.Context, db *gorm.DB, logger schemas.Logger) error {
-	migrationName := "add_service_tokens_table"
-	logger.Info("[configstore] starting migration %s", migrationName)
-	defer logger.Info("[configstore] finished migration %s", migrationName)
-	return RunSingleMigration(ctx, nil, db, logger, &migrator.Migration{
-		ID: migrationName,
-		Migrate: func(tx *gorm.DB) error {
-			return tx.WithContext(ctx).AutoMigrate(&tables.ServiceTokensTable{})
-		},
-		Rollback: func(tx *gorm.DB) error {
-			return tx.WithContext(ctx).Migrator().DropTable(&tables.ServiceTokensTable{})
-		},
-	})
 }
 
 // migrationAddInputCostPerQueryColumn adds the per-query rerank rate. Rerank models bill per

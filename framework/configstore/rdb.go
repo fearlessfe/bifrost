@@ -5793,6 +5793,11 @@ func (s *RDBConfigStore) UpdateRoutingRule(ctx context.Context, rule *tables.Tab
 		// created_at is immutable: Save writes every column, so a caller passing a rule it
 		// didn't read from the DB would otherwise zero it out. Always keep the persisted value.
 		rule.CreatedAt = existing.CreatedAt
+		// enabled is NOT NULL with a DB default, and Save writes a nil Enabled as NULL.
+		// An omitted value keeps the persisted state.
+		if rule.Enabled == nil {
+			rule.Enabled = existing.Enabled
+		}
 		if err := tx.Omit("Targets").Save(rule).Error; err != nil {
 			return err
 		}
@@ -5890,6 +5895,11 @@ func (s *RDBConfigStore) SyncRoutingRules(ctx context.Context, toAdd []tables.Ta
 			// selects every column, so an unset CreatedAt would overwrite the original insert
 			// timestamp with the zero time. Carry the persisted value forward.
 			rule.CreatedAt = existing.CreatedAt
+			// config.json rules usually omit "enabled"; keep the persisted value instead of
+			// letting Save write NULL into the NOT NULL column.
+			if rule.Enabled == nil {
+				rule.Enabled = existing.Enabled
+			}
 			if err := tx.Omit("Targets").Save(rule).Error; err != nil {
 				return err
 			}
@@ -6986,58 +6996,6 @@ func (s *RDBConfigStore) DeleteSession(ctx context.Context, token string) error 
 // FlushSessions flushes all sessions from the database.
 func (s *RDBConfigStore) FlushSessions(ctx context.Context) error {
 	return s.DB().WithContext(ctx).Session(&gorm.Session{AllowGlobalUpdate: true}).Delete(&tables.SessionsTable{}).Error
-}
-
-// CreateServiceToken creates a new service token in the database. The caller
-// must set TokenHash (SHA-256 of the plaintext); plaintext is never stored.
-func (s *RDBConfigStore) CreateServiceToken(ctx context.Context, token *tables.ServiceTokensTable) error {
-	return s.DB().WithContext(ctx).Create(token).Error
-}
-
-// GetServiceTokenByHash retrieves an active, unexpired service token by its
-// SHA-256 hash. Returns (nil, nil) when no usable token exists.
-func (s *RDBConfigStore) GetServiceTokenByHash(ctx context.Context, hash string) (*tables.ServiceTokensTable, error) {
-	var token tables.ServiceTokensTable
-	if err := s.DB().WithContext(ctx).First(&token, "token_hash = ?", hash).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, nil
-		}
-		return nil, err
-	}
-	if !token.IsActive {
-		return nil, nil
-	}
-	if token.ExpiresAt != nil && token.ExpiresAt.Before(time.Now()) {
-		return nil, nil
-	}
-	return &token, nil
-}
-
-// ListServiceTokens returns all service tokens (including inactive/expired
-// ones) ordered by creation time.
-func (s *RDBConfigStore) ListServiceTokens(ctx context.Context) ([]tables.ServiceTokensTable, error) {
-	var tokens []tables.ServiceTokensTable
-	if err := s.DB().WithContext(ctx).Order("created_at DESC").Find(&tokens).Error; err != nil {
-		return nil, err
-	}
-	return tokens, nil
-}
-
-// DeleteServiceToken deletes a service token by ID.
-func (s *RDBConfigStore) DeleteServiceToken(ctx context.Context, id uint) error {
-	result := s.DB().WithContext(ctx).Delete(&tables.ServiceTokensTable{}, id)
-	if result.Error != nil {
-		return result.Error
-	}
-	if result.RowsAffected == 0 {
-		return ErrNotFound
-	}
-	return nil
-}
-
-// TouchServiceTokenLastUsed updates the last_used_at timestamp of a service token.
-func (s *RDBConfigStore) TouchServiceTokenLastUsed(ctx context.Context, id uint) error {
-	return s.DB().WithContext(ctx).Model(&tables.ServiceTokensTable{}).Where("id = ?", id).Update("last_used_at", time.Now()).Error
 }
 
 // CreateTempToken inserts a new temp_tokens row. The plaintext token must be

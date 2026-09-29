@@ -70,7 +70,7 @@ export function BudgetDisplay({ budgets, calendarAligned, maxVisible }: BudgetDi
 								</p>
 							) : null}
 							{b.reset_duration ? (
-								<p className="text-primary-foreground/80 text-xs">
+								<p className="text-muted-foreground mt-1 text-xs">
 									Resets {formatResetDuration(b.reset_duration, calendarAligned)}
 									{fiscalQuarterNote(b.reset_duration, b.reset_config)}
 								</p>
