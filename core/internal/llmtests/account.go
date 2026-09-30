@@ -204,6 +204,7 @@ func (account *ComprehensiveTestAccount) GetConfiguredProviders() ([]schemas.Mod
 		schemas.Databricks,
 		schemas.GithubCopilot,
 		schemas.Typesafe,
+		schemas.DashScope,
 		ProviderOpenAICustom,
 	}, nil
 }
@@ -597,6 +598,18 @@ func (account *ComprehensiveTestAccount) GetKeysForProvider(ctx context.Context,
 				Value:          *schemas.NewSecretVar("env.RUNWARE_API_KEY"),
 				Models:         []string{"*"},
 				Weight:         1.0,
+				UseForBatchAPI: bifrost.Ptr(true),
+			},
+		}, nil
+	case schemas.DashScope:
+		return []schemas.Key{
+			{
+				Value:  *schemas.NewSecretVar("env.DASHSCOPE_API_KEY"),
+				Models: []string{"*"},
+				Weight: 1.0,
+				// Batch-eligible on purpose: the BatchUnsupported/FileUnsupported
+				// scenarios assert the provider's unsupported_operation error, which
+				// is only reachable if the key pool lets batch requests through.
 				UseForBatchAPI: bifrost.Ptr(true),
 			},
 		}, nil
@@ -1066,6 +1079,21 @@ func (account *ComprehensiveTestAccount) GetConfigForProvider(providerKey schema
 			},
 		}, nil
 	case schemas.Runware:
+		return &schemas.ProviderConfig{
+			NetworkConfig: schemas.NetworkConfig{
+				DefaultRequestTimeoutInSeconds: 300,
+				MaxRetries:                     10,
+				RetryBackoffInitial:            1 * time.Second,
+				RetryBackoffMax:                12 * time.Second,
+			},
+			ConcurrencyAndBufferSize: schemas.ConcurrencyAndBufferSize{
+				Concurrency: Concurrency,
+				BufferSize:  10,
+			},
+		}, nil
+	case schemas.DashScope:
+		// 300s timeout: the wan*/wanx* image task APIs are submit + poll, and
+		// image synthesis regularly runs past a minute.
 		return &schemas.ProviderConfig{
 			NetworkConfig: schemas.NetworkConfig{
 				DefaultRequestTimeoutInSeconds: 300,

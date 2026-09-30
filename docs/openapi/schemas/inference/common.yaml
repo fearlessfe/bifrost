@@ -34,7 +34,10 @@ ModelProvider:
     - fireworks
     - sarvam
     - wafer
+    - github-copilot
     - databricks
+    - typesafe
+    - dashscope
 
 Fallback:
   type: object

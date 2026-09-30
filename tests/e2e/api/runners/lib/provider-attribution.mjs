@@ -26,6 +26,7 @@ export const PROVIDER_KEYWORDS = {
   openrouter: ["openrouter"],
   huggingface: ["huggingface", "hugging face"],
   replicate: ["replicate", "/replicate", "flux", "black-forest-labs"],
+  dashscope: ["dashscope"],
 };
 
 // filter-collection asks "does this item match provider P?" once per fork, so an
@@ -38,6 +39,7 @@ export const MATCH_ORDER = [
   "openrouter",
   "huggingface",
   "replicate",
+  "dashscope",
   "vertex",
   "azure",
   "bedrock_mantle",

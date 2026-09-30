@@ -869,6 +869,11 @@ export const ProviderIcons = {
 			</svg>
 		);
 	},
+	dashscope: ({ size = "md", className = "" }: IconProps) => {
+		const resolvedSize = resolveSize(size);
+
+		return <img src="/images/dashscope.svg" alt="dashscope" width={resolvedSize} height={resolvedSize} className={className} />;
+	},
 } as const;
 
 // Routing Engine Icons

@@ -466,6 +466,9 @@
         "typesafe": {
           "$ref": "#/$defs/provider"
         },
+        "dashscope": {
+          "$ref": "#/$defs/provider"
+        },
         "vllm": {
           "$ref": "#/$defs/provider_with_vllm_config"
         },
@@ -8830,7 +8833,8 @@
             "fireworks",
             "sarvam",
             "wafer",
-            "typesafe"
+            "typesafe",
+            "dashscope"
           ],
           "description": "Base provider type to extend"
         },

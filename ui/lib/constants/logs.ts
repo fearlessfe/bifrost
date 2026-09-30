@@ -33,6 +33,7 @@ export const KnownProvidersNames = [
 	"databricks",
 	"github-copilot",
 	"typesafe",
+	"dashscope",
 ] as const;
 
 // Local Provider type derived from KNOWN_PROVIDERS constant
@@ -68,6 +69,7 @@ export const EmbeddingSupportedProviders: readonly ProviderName[] = [
 	"vertex",
 	"vllm",
 	"databricks",
+	"dashscope",
 ] as const;
 
 export const Statuses = ["success", "error", "processing", "cancelled"] as const;
@@ -174,6 +176,7 @@ export const ProviderLabels: Record<ProviderName, string> = {
 	databricks: "Databricks",
 	"github-copilot": "GitHub Copilot",
 	typesafe: "TypeSafe",
+	dashscope: "Alibaba DashScope",
 } as const;
 
 // Helper function to get provider label, supporting custom providers

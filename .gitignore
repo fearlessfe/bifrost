@@ -56,6 +56,7 @@ tests/e2e/api/newman-reports
 settings.local.json
 .codex/
 .cursor/
+.zcode/
 .claude/*
 !.claude/skills/
 

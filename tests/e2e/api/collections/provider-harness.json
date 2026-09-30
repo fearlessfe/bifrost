@@ -2655,6 +2655,105 @@
                   ]
                 },
                 {
+                  "name": "DashScope (1 latest)",
+                  "description": "Chat rides DashScope's OpenAI-compatible surface (/compatible-mode) via the shared openai converters.",
+                  "item": [
+                    {
+                      "name": "dashscope/qwen-plus",
+                      "request": {
+                        "method": "POST",
+                        "header": [
+                          {
+                            "key": "Content-Type",
+                            "value": "application/json"
+                          }
+                        ],
+                        "body": {
+                          "mode": "raw",
+                          "raw": "{\n  \"model\": \"dashscope/qwen-plus\",\n  \"messages\": [{ \"role\": \"user\", \"content\": \"Hello\" }]\n}"
+                        },
+                        "url": {
+                          "raw": "{{baseUrl}}/v1/chat/completions",
+                          "host": [
+                            "{{baseUrl}}"
+                          ],
+                          "path": [
+                            "v1",
+                            "chat",
+                            "completions"
+                          ]
+                        }
+                      }
+                    },
+                    {
+                      "name": "dashscope/qwen-plus (top-level enable_thinking flattened without opt-in header)",
+                      "event": [
+                        {
+                          "listen": "test",
+                          "script": {
+                            "type": "text/javascript",
+                            "exec": [
+                              "// Regression: dashscope chat extra params (enable_thinking, top_k, ...) were",
+                              "// silently dropped - the flatten in CheckContextAndGetRequestBody only runs when",
+                              "// BifrostContextKeyPassthroughExtraParams is set, and the chat handler never sets",
+                              "// it. The provider now opts in itself (deepseek/sgl/vllm pattern), so this request",
+                              "// deliberately omits the x-bf-passthrough-extra-params header: the knob must still",
+                              "// reach the wire. Native routes collect unknown TOP-LEVEL fields as extra params",
+                              "// (the extra_params envelope is the /openai/* integration convention). The pin reads",
+                              "// extra_fields.raw_request, the exact body sent upstream.",
+                              "var txt = pm.response.text() || '';",
+                              "pm.test('chat with extra_params returned success', function () {",
+                              "  pm.expect(pm.response.code, 'failed: ' + txt).to.be.below(400);",
+                              "});",
+                              "var body = {};",
+                              "try { body = pm.response.json() || {}; } catch (e) { body = {}; }",
+                              "pm.test('response carries assistant content', function () {",
+                              "  var choices = body.choices || [];",
+                              "  var msg = (choices[0] || {}).message || {};",
+                              "  pm.expect(typeof msg.content === 'string' && msg.content.length > 0, 'no assistant content: ' + txt).to.be.true;",
+                              "});",
+                              "var rr = (body.extra_fields || {}).raw_request;",
+                              "if (typeof rr === 'string') { try { rr = JSON.parse(rr); } catch (e) { rr = null; } }",
+                              "pm.test('top-level enable_thinking flattened onto the chat body', function () {",
+                              "  var got = rr ? rr.enable_thinking : undefined;",
+                              "  pm.expect(got, 'enable_thinking missing from raw_request - extra_params was swallowed. raw_request: ' + JSON.stringify(rr || null)).to.eql(false);",
+                              "});"
+                            ]
+                          }
+                        }
+                      ],
+                      "request": {
+                        "method": "POST",
+                        "header": [
+                          {
+                            "key": "Content-Type",
+                            "value": "application/json"
+                          },
+                          {
+                            "key": "x-bf-send-back-raw-request",
+                            "value": "true"
+                          }
+                        ],
+                        "body": {
+                          "mode": "raw",
+                          "raw": "{\n  \"model\": \"dashscope/qwen-plus\",\n  \"messages\": [{ \"role\": \"user\", \"content\": \"Hello\" }],\n  \"enable_thinking\": false\n}"
+                        },
+                        "url": {
+                          "raw": "{{baseUrl}}/v1/chat/completions",
+                          "host": [
+                            "{{baseUrl}}"
+                          ],
+                          "path": [
+                            "v1",
+                            "chat",
+                            "completions"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                },
+                {
                   "name": "DeepSeek (2 latest)",
                   "item": [
                     {
@@ -3122,6 +3221,32 @@
                     "body": {
                       "mode": "raw",
                       "raw": "{\n  \"model\": \"deepseek/deepseek-v4-flash\",\n  \"input\": \"Hello\"\n}"
+                    },
+                    "url": {
+                      "raw": "{{baseUrl}}/v1/responses",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "v1",
+                        "responses"
+                      ]
+                    }
+                  }
+                },
+                {
+                  "name": "dashscope/qwen-plus",
+                  "request": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                      }
+                    ],
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\n  \"model\": \"dashscope/qwen-plus\",\n  \"input\": \"Hello\"\n}"
                     },
                     "url": {
                       "raw": "{{baseUrl}}/v1/responses",
@@ -5080,6 +5205,33 @@
                       ]
                     }
                   }
+                },
+                {
+                  "name": "dashscope/qwen-plus",
+                  "request": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                      }
+                    ],
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\n  \"model\": \"dashscope/qwen-plus\",\n  \"messages\": [{ \"role\": \"user\", \"content\": \"Count to 5\" }],\n  \"stream\": true\n}"
+                    },
+                    "url": {
+                      "raw": "{{baseUrl}}/v1/chat/completions",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "v1",
+                        "chat",
+                        "completions"
+                      ]
+                    }
+                  }
                 }
               ]
             },
@@ -5351,6 +5503,54 @@
                     "body": {
                       "mode": "raw",
                       "raw": "{\n  \"model\": \"deepseek/deepseek-v4-flash\",\n  \"input\": \"Count to 5\",\n  \"stream\": true\n}"
+                    },
+                    "url": {
+                      "raw": "{{baseUrl}}/v1/responses",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "v1",
+                        "responses"
+                      ]
+                    }
+                  }
+                },
+                {
+                  "name": "dashscope/qwen-plus",
+                  "event": [
+                    {
+                      "listen": "test",
+                      "script": {
+                        "type": "text/javascript",
+                        "exec": [
+                          "// DashScope has no native Responses surface: Responses/ResponsesStream convert",
+                          "// to chat completions and back (BifrostContextKeyIsResponsesToChatCompletionFallback).",
+                          "// The pin is that the converted stream still speaks the Responses SSE event",
+                          "// lifecycle end to end - a broken fallback would surface raw chat chunks instead.",
+                          "var txt = pm.response.text() || '';",
+                          "pm.test('responses stream returned success', function () {",
+                          "  pm.expect(pm.response.code, 'failed: ' + txt).to.be.below(400);",
+                          "});",
+                          "pm.test('stream carries Responses API events (chat fallback converted)', function () {",
+                          "  pm.expect(txt.indexOf('response.created') !== -1, 'missing response.created - the stream is not speaking the Responses event lifecycle: ' + txt.slice(0, 400)).to.be.true;",
+                          "  pm.expect(txt.indexOf('response.completed') !== -1, 'missing terminal response.completed: ' + txt.slice(0, 400)).to.be.true;",
+                          "});"
+                        ]
+                      }
+                    }
+                  ],
+                  "request": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                      }
+                    ],
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\n  \"model\": \"dashscope/qwen-plus\",\n  \"input\": \"Count to 5\",\n  \"stream\": true\n}"
                     },
                     "url": {
                       "raw": "{{baseUrl}}/v1/responses",
@@ -6396,6 +6596,57 @@
                       ]
                     }
                   }
+                },
+                {
+                  "name": "dashscope/text-embedding-v3",
+                  "event": [
+                    {
+                      "listen": "test",
+                      "script": {
+                        "type": "text/javascript",
+                        "exec": [
+                          "// DashScope embeddings ride the OpenAI-compatible surface",
+                          "// (/compatible-mode/v1/embeddings) via the shared openai handler - this pins",
+                          "// the route end to end: success status plus an OpenAI-shaped data array.",
+                          "pm.test('embedding request returned success', function () {",
+                          "  pm.expect(pm.response.code, 'failed: ' + pm.response.text()).to.be.below(400);",
+                          "});",
+                          "var j; try { j = pm.response.json(); } catch (e) {",
+                          "  pm.expect.fail('response was not JSON: ' + (pm.response.text() || '').slice(0, 300)); return; }",
+                          "var data = j.data || [];",
+                          "pm.test('returns 1 vector for a single input', function () {",
+                          "  pm.expect(data.length, 'wrong vector count; body: ' + pm.response.text().slice(0, 300)).to.eql(1);",
+                          "  if (!data.length) { return; }",
+                          "  pm.expect(Array.isArray(data[0].embedding), 'data[0].embedding is not an array: ' + pm.response.text().slice(0, 300)).to.be.true;",
+                          "  pm.expect(data[0].embedding.length, 'data[0].embedding is empty').to.be.above(0);",
+                          "});"
+                        ]
+                      }
+                    }
+                  ],
+                  "request": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                      }
+                    ],
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\n  \"model\": \"dashscope/text-embedding-v3\",\n  \"input\": \"Hello world\"\n}"
+                    },
+                    "url": {
+                      "raw": "{{baseUrl}}/v1/embeddings",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "v1",
+                        "embeddings"
+                      ]
+                    }
+                  }
                 }
               ]
             },
@@ -6699,7 +6950,7 @@
           "item": [
             {
               "name": "8.4.K Native /v1/audio/transcriptions × providers",
-              "description": "Transcription endpoint with multipart formdata. Supported providers: OpenAI (Whisper, gpt-4o-mini-transcribe), Gemini (via generateContent under the hood), Azure (Whisper deployment).",
+              "description": "Transcription endpoint with multipart formdata. Supported providers: OpenAI (Whisper, gpt-4o-mini-transcribe), Gemini (via generateContent under the hood), Azure (Whisper deployment), DashScope (qwen3-asr-flash — no /audio/transcriptions surface; audio rides chat completions as an input_audio block).",
               "item": [
                 {
                   "name": "openai/whisper-1",
@@ -6717,6 +6968,112 @@
                           "key": "file",
                           "src": "tests/e2e/api/fixtures/sample.mp3",
                           "type": "file"
+                        }
+                      ]
+                    },
+                    "url": {
+                      "raw": "{{baseUrl}}/v1/audio/transcriptions",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "v1",
+                        "audio",
+                        "transcriptions"
+                      ]
+                    }
+                  }
+                },
+                {
+                  "name": "dashscope/qwen3-asr-flash",
+                  "request": {
+                    "method": "POST",
+                    "body": {
+                      "mode": "formdata",
+                      "formdata": [
+                        {
+                          "key": "model",
+                          "value": "dashscope/qwen3-asr-flash",
+                          "type": "text"
+                        },
+                        {
+                          "key": "file",
+                          "src": "tests/e2e/api/fixtures/sample.mp3",
+                          "type": "file"
+                        }
+                      ]
+                    },
+                    "url": {
+                      "raw": "{{baseUrl}}/v1/audio/transcriptions",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "v1",
+                        "audio",
+                        "transcriptions"
+                      ]
+                    }
+                  }
+                },
+                {
+                  "name": "dashscope/qwen3-asr-flash (language -> asr_options.language)",
+                  "event": [
+                    {
+                      "listen": "test",
+                      "script": {
+                        "type": "text/javascript",
+                        "exec": [
+                          "// Regression: the standard multipart `language` field lands in",
+                          "// Params.Language, which the dashscope provider used to drop silently -",
+                          "// only ExtraParams were forwarded. DashScope reads the language from a",
+                          "// top-level asr_options object on the compatible-mode chat body, so the",
+                          "// provider folds Params.Language into asr_options.language. The pin reads",
+                          "// extra_fields.raw_request, the exact chat body sent upstream.",
+                          "var txt = pm.response.text() || '';",
+                          "pm.test('transcription with language returned success', function () {",
+                          "  pm.expect(pm.response.code, 'failed: ' + txt).to.be.below(400);",
+                          "});",
+                          "var body = {};",
+                          "try { body = pm.response.json() || {}; } catch (e) { body = {}; }",
+                          "pm.test('response carries transcript text', function () {",
+                          "  pm.expect(typeof body.text === 'string' && body.text.length > 0, 'no transcript: ' + txt).to.be.true;",
+                          "});",
+                          "var rr = (body.extra_fields || {}).raw_request;",
+                          "if (typeof rr === 'string') { try { rr = JSON.parse(rr); } catch (e) { rr = null; } }",
+                          "pm.test('language folded into asr_options.language on the chat body', function () {",
+                          "  var got = rr && rr.asr_options ? rr.asr_options.language : undefined;",
+                          "  pm.expect(got, 'asr_options.language missing - Params.Language was swallowed. raw_request: ' + JSON.stringify(rr || null)).to.eql('en');",
+                          "});"
+                        ]
+                      }
+                    }
+                  ],
+                  "request": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "x-bf-send-back-raw-request",
+                        "value": "true"
+                      }
+                    ],
+                    "body": {
+                      "mode": "formdata",
+                      "formdata": [
+                        {
+                          "key": "model",
+                          "value": "dashscope/qwen3-asr-flash",
+                          "type": "text"
+                        },
+                        {
+                          "key": "file",
+                          "src": "tests/e2e/api/fixtures/sample.mp3",
+                          "type": "file"
+                        },
+                        {
+                          "key": "language",
+                          "value": "en",
+                          "type": "text"
                         }
                       ]
                     },
@@ -7068,7 +7425,7 @@
             },
             {
               "name": "8.4.M Native /v1/audio/speech × providers",
-              "description": "Text-to-speech endpoint. Supported: OpenAI, Azure. Anthropic/Gemini/Vertex/Bedrock have no `/v1/audio/speech`-equivalent endpoint in Bifrost.",
+              "description": "Text-to-speech endpoint. Supported: OpenAI, Azure, DashScope (qwen-tts family, native multimodal-generation). Anthropic/Gemini/Vertex/Bedrock have no `/v1/audio/speech`-equivalent endpoint in Bifrost.",
               "item": [
                 {
                   "name": "openai/tts-1",
@@ -7083,6 +7440,33 @@
                     "body": {
                       "mode": "raw",
                       "raw": "{\n  \"model\": \"openai/tts-1\",\n  \"input\": \"Hello, world.\",\n  \"voice\": \"alloy\",\n  \"response_format\": \"mp3\"\n}"
+                    },
+                    "url": {
+                      "raw": "{{baseUrl}}/v1/audio/speech",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "v1",
+                        "audio",
+                        "speech"
+                      ]
+                    }
+                  }
+                },
+                {
+                  "name": "dashscope/qwen3-tts-flash",
+                  "request": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                      }
+                    ],
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\n  \"model\": \"dashscope/qwen3-tts-flash\",\n  \"input\": \"你好，今天天气怎么样？\",\n  \"voice\": \"Cherry\",\n  \"response_format\": \"mp3\"\n}"
                     },
                     "url": {
                       "raw": "{{baseUrl}}/v1/audio/speech",
@@ -7418,6 +7802,60 @@
                   }
                 },
                 {
+                  "name": "dashscope/qwen-image",
+                  "request": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                      }
+                    ],
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\n  \"model\": \"dashscope/qwen-image\",\n  \"prompt\": \"A simple red apple on a white background\",\n  \"n\": 1,\n  \"size\": \"1024x1024\"\n}"
+                    },
+                    "url": {
+                      "raw": "{{baseUrl}}/v1/images/generations",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "v1",
+                        "images",
+                        "generations"
+                      ]
+                    }
+                  }
+                },
+                {
+                  "name": "dashscope/wan2.2-t2i-flash",
+                  "request": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                      }
+                    ],
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\n  \"model\": \"dashscope/wan2.2-t2i-flash\",\n  \"prompt\": \"A simple red apple on a white background\",\n  \"n\": 1,\n  \"size\": \"1024x1024\"\n}"
+                    },
+                    "url": {
+                      "raw": "{{baseUrl}}/v1/images/generations",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "v1",
+                        "images",
+                        "generations"
+                      ]
+                    }
+                  }
+                },
+                {
                   "name": "[SKIP] anthropic/claude-haiku-4-5 (no image gen)",
                   "request": {
                     "method": "POST",
@@ -7538,6 +7976,132 @@
                     "body": {
                       "mode": "raw",
                       "raw": "{\n  \"model\": \"azure/gpt-image-2\",\n  \"prompt\": \"A simple red apple on a white background\",\n  \"n\": 1,\n  \"size\": \"1024x1024\"\n}"
+                    },
+                    "url": {
+                      "raw": "{{baseUrl}}/v1/images/generations",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "v1",
+                        "images",
+                        "generations"
+                      ]
+                    }
+                  }
+                },
+                {
+                  "name": "dashscope/wan2.5-i2i-preview (input_images -> task input.images)",
+                  "event": [
+                    {
+                      "listen": "test",
+                      "script": {
+                        "type": "text/javascript",
+                        "exec": [
+                          "// Regression: ToDashScopeTaskImageRequest silently dropped Params.InputImages, so",
+                          "// wan i2i models generated from the prompt alone. The pin is the submit body",
+                          "// itself (extra_fields.raw_request): the reference image must ride input.images,",
+                          "// and i2i models must reach the image2image/image-synthesis endpoint (a t2i",
+                          "// endpoint would 400 on input.images, so success also pins the routing).",
+                          "var txt = pm.response.text() || '';",
+                          "pm.test('wan2.5 i2i generation returned success', function () {",
+                          "  pm.expect(pm.response.code, 'failed: ' + txt).to.be.below(400);",
+                          "});",
+                          "var body = {};",
+                          "try { body = pm.response.json() || {}; } catch (e) { body = {}; }",
+                          "pm.test('response carries an output image', function () {",
+                          "  var data = body.data || [];",
+                          "  pm.expect(data.length, 'no data in response: ' + txt).to.be.above(0);",
+                          "  if (!data.length) { return; }",
+                          "  pm.expect(!!(data[0].url || data[0].b64_json), 'data[0] has neither url nor b64_json: ' + txt).to.be.true;",
+                          "});",
+                          "var rr = (body.extra_fields || {}).raw_request;",
+                          "if (typeof rr === 'string') { try { rr = JSON.parse(rr); } catch (e) { rr = null; } }",
+                          "pm.test('input image reached the task submit body (input.images)', function () {",
+                          "  var images = rr && rr.input && Array.isArray(rr.input.images) ? rr.input.images : null;",
+                          "  pm.expect(images !== null && images.length === 1, 'input.images missing from the DashScope task submit body - Params.InputImages was dropped. raw_request: ' + JSON.stringify(rr || null)).to.be.true;",
+                          "  if (!images || !images.length) { return; }",
+                          "  pm.expect(images[0], 'wrong input image forwarded').to.eql('https://storage.googleapis.com/generativeai-downloads/images/scones.jpg');",
+                          "});"
+                        ]
+                      }
+                    }
+                  ],
+                  "request": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                      },
+                      {
+                        "key": "x-bf-send-back-raw-request",
+                        "value": "true"
+                      }
+                    ],
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\n  \"model\": \"dashscope/wan2.5-i2i-preview\",\n  \"prompt\": \"Add a soft warm glow to the scene\",\n  \"input_images\": [\n    \"https://storage.googleapis.com/generativeai-downloads/images/scones.jpg\"\n  ]\n}"
+                    },
+                    "url": {
+                      "raw": "{{baseUrl}}/v1/images/generations",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "v1",
+                        "images",
+                        "generations"
+                      ]
+                    }
+                  }
+                },
+                {
+                  "name": "dashscope/wan2.5-i2i-preview (bare base64 input_images -> data URL)",
+                  "event": [
+                    {
+                      "listen": "test",
+                      "script": {
+                        "type": "text/javascript",
+                        "exec": [
+                          "// Regression: InputImages entries were copied onto the task submit body",
+                          "// verbatim, but the Bifrost contract also allows bare base64 - which",
+                          "// DashScope rejects ('The provided URL does not appear to be valid'). Each",
+                          "// entry now goes through schemas.SanitizeImageURL, so bare base64 arrives",
+                          "// upstream wrapped as a data URL. The pin reads extra_fields.raw_request,",
+                          "// the exact submit body sent upstream.",
+                          "var txt = pm.response.text() || '';",
+                          "pm.test('wan2.5 i2i with bare base64 input returned success', function () {",
+                          "  pm.expect(pm.response.code, 'failed (bare base64 reaching upstream unwrapped would 400 here): ' + txt).to.be.below(400);",
+                          "});",
+                          "var body = {};",
+                          "try { body = pm.response.json() || {}; } catch (e) { body = {}; }",
+                          "var rr = (body.extra_fields || {}).raw_request;",
+                          "if (typeof rr === 'string') { try { rr = JSON.parse(rr); } catch (e) { rr = null; } }",
+                          "pm.test('bare base64 wrapped as a data URL in input.images', function () {",
+                          "  var images = rr && rr.input && Array.isArray(rr.input.images) ? rr.input.images : [];",
+                          "  var first = images.length ? String(images[0]) : '';",
+                          "  pm.expect(first.indexOf('data:image/png;base64,') === 0, 'input.images[0] is not a data URL - bare base64 was forwarded unwrapped. raw_request: ' + JSON.stringify(rr || null)).to.be.true;",
+                          "});"
+                        ]
+                      }
+                    }
+                  ],
+                  "request": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                      },
+                      {
+                        "key": "x-bf-send-back-raw-request",
+                        "value": "true"
+                      }
+                    ],
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\n  \"model\": \"dashscope/wan2.5-i2i-preview\",\n  \"prompt\": \"Colorize this photo\",\n  \"n\": 1,\n  \"input_images\": [\n    \"iVBORw0KGgoAAAANSUhEUgAAAgAAAAIACAIAAAB7GkOtAAAFn0lEQVR42u3VMQ0AAAgEsReGMCQiCw+sNKmCWy7TBcBDkQDAAAAwAAAMAAADAMAAADAAAAwAAAMAwAAAMAAADAAAAwDAAAAwAAAMAAADAMAAADAAAAwAAAMAwAAAMAAADADAAAAwAAAMAAADAMAAADAAAAwAAAMAwAAAMAAADAAAAwDAAAAwAAAMAAADAMAAADAAAAwAAAMAwAAAMAAADADAAFQAMAAADAAAAwDAAAAwAAAMAAADAMAAADAAAAwAAAMAwAAAMAAADAAAAwDAAAAwAAAMAAADAMAAADAAAAwAAAMAMAAADAAAAwDAAAAwAAAMAAADAMAAADAAAAwAAAMAwAAAMAAADAAAAwDAAAAwAAAMAAADAMAAADAAAAwAAAMAMAAVAAwAAAMAwAAAMAAADAAAAwDAAAAwAAAMAAADAMAAADAAAAwAAAMAwAAAMAAADAAAAwDAAAAwAAAMAAADAMAAAAwAAAMAwAAAMAAADAAAAwDAAAAwAAAMAAADAMAAADAAAAwAAAMAwAAAMAAADAAAAwDAAAAwAAAMAAADAMAAAAwAAAMAwAAAMAAADAAAAwDAAAAwAAAMAAADAMAAADAAAAwAAAMAwAAAMAAADAAAAwDAAAAwAAAMAAADAMAAADAAAAMAwAAAMAAADAAAAwDAAAAwAAAMAAADAMAAADAAAAwAAAMAwAAAMAAADAAAAwDAAAAwAAAMAAADAMAAADAAAAMAwAAAMAAADAAAAwDAAAAwAAAMAAADAMAAADAAAAwAAAMAwAAAMAAADAAAAwDAAAAwAAAMAAADAMAAADAAAAwAwAAAMAAADAAAAwDAAAAwAAAMAAADAMAAADAAAAwAAAMAwAAAMAAADAAAAwDAAAAwAAAMAAADAMAAADAAAAwAwAAAMAAADAAAAwDAAAAwAAAMAAADAMAAADAAAAwAAAMAwAAAMAAADAAAAwDAAAAwAAAMAAADAMAAADAAAAwAwAAkADAAAAwAAAMAwAAAMAAADAAAAwDAAAAwAAAMAAADAMAAADAAAAwAAAMAwAAAMAAADAAAAwDAAAAwAAAMAAADADAAAAwAAAMAwAAAMAAADAAAAwDAAAAwAAAMAAADAMAAADAAAAwAAAMAwAAAMAAADAAAAwDAAAAwAAAMAAADADAAFQAMAAADAMAAADAAAAwAAAMAwAAAMAAADAAAAwDAAAAwAAAMAAADAMAAADAAAAwAAAMAwAAAMAAADAAAAwDAAAAMAAADAMAAADAAAAwAAAMAwAAAMAAADAAAAwDAAAAwAAAMAAADAMAAADAAAAwAAAMAwAAAMAAADAAAAwDAAAAMQAUAAwDAAAAwAAAMAAADAMAAADAAAAwAAAMAwAAAMAAADAAAAwDAAAAwAAAMAAADAMAAADAAAAwAAAMAwAAAMAAAAwDAAAAwAAAMAAADAMAAADAAAAwAAAMAwAAAMAAADAAAAwDAAAAwAAAMAAADAMAAADAAAAwAAAMAwAAAMAAAAwDAAAAwAAAMAAADAMAAADAAAAwAAAMAwAAAMAAADAAAAwDAAAAwAAAMAAADAMAAADAAAAwAAAMAwAAAMAAADADAAAAwAAAMAAADAMAAADAAAAwAAAMAwAAAMAAADAAAAwDAAAAwAAAMAAADAMAAADAAAAwAAAMAwAAAMAAADADAAAAwAAAMAAADAMAAADAAAAwAAAMAwAAAMAAADAAAAwDAAAAwAAAMAAADAMAAADAAAAwAAAMAwAAAMAAADAAAAwAwAAAMAAADAMAAADAAAAwAAAMAwAAAMAAADAAAAwDAAAAwAAAMAAADAMAAADAAAAwAAAMAwAAAMAAADAAAAwAwAAAMAAADAMAAADAAAAwAAAMAwAAAMAAADAAAAwDAAAAwAAAMAAADAMAAADAAAAwAgJsFiixZEUWyiA0AAAAASUVORK5CYII=\"\n  ]\n}"
                     },
                     "url": {
                       "raw": "{{baseUrl}}/v1/images/generations",
@@ -7683,6 +8247,81 @@
                     "body": {
                       "mode": "raw",
                       "raw": "{\n  \"model\": \"azure/gpt-image-2\",\n  \"prompt\": \"A simple red apple on a white background\",\n  \"n\": 1,\n  \"size\": \"1024x1024\"\n}"
+                    },
+                    "url": {
+                      "raw": "{{baseUrl}}/openai/v1/images/generations",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "openai",
+                        "v1",
+                        "images",
+                        "generations"
+                      ]
+                    }
+                  }
+                },
+                {
+                  "name": "dashscope/wan2.2-t2i-flash (extra_params.negative_prompt -> task input)",
+                  "event": [
+                    {
+                      "listen": "test",
+                      "script": {
+                        "type": "text/javascript",
+                        "exec": [
+                          "// Regression: extra_params.negative_prompt was silently swallowed on the async",
+                          "// task path (wan*/wanx*). It must be promoted out of ExtraParams and land in the",
+                          "// task input (the task API ignores parameters.negative_prompt), with the",
+                          "// parameters copy cleared - a duplicate there, or a double-injection at the JSON",
+                          "// root, makes DashScope reject the submit with 400 InvalidParameter. The pins",
+                          "// read extra_fields.raw_request, the exact submit body sent upstream.",
+                          "var txt = pm.response.text() || '';",
+                          "pm.test('wan t2i with negative_prompt returned success', function () {",
+                          "  pm.expect(pm.response.code, 'failed (a root-level or parameters-level negative_prompt duplicate would 400 here): ' + txt).to.be.below(400);",
+                          "});",
+                          "var body = {};",
+                          "try { body = pm.response.json() || {}; } catch (e) { body = {}; }",
+                          "pm.test('response carries an output image', function () {",
+                          "  var data = body.data || [];",
+                          "  pm.expect(data.length, 'no data in response: ' + txt).to.be.above(0);",
+                          "});",
+                          "var rr = (body.extra_fields || {}).raw_request;",
+                          "if (typeof rr === 'string') { try { rr = JSON.parse(rr); } catch (e) { rr = null; } }",
+                          "pm.test('extra_params.negative_prompt promoted into task input', function () {",
+                          "  var got = rr && rr.input ? rr.input.negative_prompt : undefined;",
+                          "  pm.expect(got, 'input.negative_prompt missing - extra_params.negative_prompt was swallowed. raw_request: ' + JSON.stringify(rr || null)).to.eql('blurry, low quality, distorted');",
+                          "});",
+                          "pm.test('negative_prompt not duplicated in parameters (task API rejects it there)', function () {",
+                          "  var p = (rr && rr.parameters) || {};",
+                          "  pm.expect(p.negative_prompt === undefined || p.negative_prompt === '', 'parameters.negative_prompt must be cleared on the task API: ' + JSON.stringify(p)).to.be.true;",
+                          "});",
+                          "pm.test('negative_prompt not injected at the JSON root', function () {",
+                          "  pm.expect(!!(rr && rr.negative_prompt !== undefined), 'root-level negative_prompt would make DashScope reject the submit: ' + JSON.stringify(rr || null)).to.be.false;",
+                          "});"
+                        ]
+                      }
+                    }
+                  ],
+                  "request": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                      },
+                      {
+                        "key": "x-bf-passthrough-extra-params",
+                        "value": "true"
+                      },
+                      {
+                        "key": "x-bf-send-back-raw-request",
+                        "value": "true"
+                      }
+                    ],
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\n  \"model\": \"dashscope/wan2.2-t2i-flash\",\n  \"prompt\": \"A simple red apple on a white background\",\n  \"size\": \"1024x1024\",\n  \"extra_params\": {\n    \"negative_prompt\": \"blurry, low quality, distorted\"\n  }\n}"
                     },
                     "url": {
                       "raw": "{{baseUrl}}/openai/v1/images/generations",

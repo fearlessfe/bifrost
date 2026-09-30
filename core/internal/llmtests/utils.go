@@ -82,6 +82,18 @@ func GetProviderVoice(provider schemas.ModelProvider, voiceType string) string {
 		default:
 			return "21m00Tcm4TlvDq8ikWAM"
 		}
+	case schemas.DashScope:
+		// Qwen-TTS preset voices.
+		switch voiceType {
+		case "primary":
+			return "Cherry"
+		case "secondary":
+			return "Serena"
+		case "tertiary":
+			return "Ethan"
+		default:
+			return "Cherry"
+		}
 	default:
 		// Default to OpenAI voices for other providers
 		switch voiceType {

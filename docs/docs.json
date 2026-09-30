@@ -146,6 +146,7 @@
                   "providers/supported-providers/bedrock-mantle",
                   "providers/supported-providers/cerebras",
                   "providers/supported-providers/cohere",
+                  "providers/supported-providers/dashscope",
                   "providers/supported-providers/databricks",
                   "providers/supported-providers/deepseek",
                   "providers/supported-providers/elevenlabs",
