@@ -6950,7 +6950,7 @@
           "item": [
             {
               "name": "8.4.K Native /v1/audio/transcriptions × providers",
-              "description": "Transcription endpoint with multipart formdata. Supported providers: OpenAI (Whisper, gpt-4o-mini-transcribe), Gemini (via generateContent under the hood), Azure (Whisper deployment), DashScope (qwen3-asr-flash — no /audio/transcriptions surface; audio rides chat completions as an input_audio block).",
+              "description": "Transcription endpoint with multipart formdata. Supported providers: OpenAI (Whisper, gpt-4o-mini-transcribe), Gemini (via generateContent under the hood), Azure (Whisper deployment), DashScope (qwen3-asr-flash — no /audio/transcriptions surface; audio rides chat completions as an input_audio block; qwen-audio-3.x-asr-flash — not hosted on compatible mode, runs on the native multimodal-generation endpoint).",
               "item": [
                 {
                   "name": "openai/whisper-1",
@@ -7063,6 +7063,154 @@
                         {
                           "key": "model",
                           "value": "dashscope/qwen3-asr-flash",
+                          "type": "text"
+                        },
+                        {
+                          "key": "file",
+                          "src": "tests/e2e/api/fixtures/sample.mp3",
+                          "type": "file"
+                        },
+                        {
+                          "key": "language",
+                          "value": "en",
+                          "type": "text"
+                        }
+                      ]
+                    },
+                    "url": {
+                      "raw": "{{baseUrl}}/v1/audio/transcriptions",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "v1",
+                        "audio",
+                        "transcriptions"
+                      ]
+                    }
+                  }
+                },
+                {
+                  "name": "dashscope/qwen-audio-3.1-asr-flash (native multimodal-generation ASR)",
+                  "event": [
+                    {
+                      "listen": "test",
+                      "script": {
+                        "type": "text/javascript",
+                        "exec": [
+                          "// qwen-audio-3.x ASR flash models are not hosted on DashScope's OpenAI-compatible",
+                          "// chat surface (3.1 404s 'Unsupported model ... for OpenAI compatibility mode'),",
+                          "// so Bifrost routes them to the native multimodal-generation endpoint. The pin",
+                          "// reads extra_fields.raw_request, the exact body sent upstream: it must be the",
+                          "// native shape (input.messages with an input_audio part, parameters.format),",
+                          "// never the compatible-mode chat shape (top-level messages).",
+                          "var txt = pm.response.text() || '';",
+                          "pm.test('transcription returned success', function () {",
+                          "  pm.expect(pm.response.code, 'failed: ' + txt).to.be.below(400);",
+                          "});",
+                          "var body = {};",
+                          "try { body = pm.response.json() || {}; } catch (e) { body = {}; }",
+                          "pm.test('response carries transcript text', function () {",
+                          "  pm.expect(typeof body.text === 'string' && body.text.length > 0, 'no transcript: ' + txt).to.be.true;",
+                          "});",
+                          "pm.test('compatible-mode rejection signature absent', function () {",
+                          "  pm.expect(txt.indexOf('for OpenAI compatibility mode') === -1, 'request hit compatible mode: ' + txt).to.be.true;",
+                          "});",
+                          "var rr = (body.extra_fields || {}).raw_request;",
+                          "if (typeof rr === 'string') { try { rr = JSON.parse(rr); } catch (e) { rr = null; } }",
+                          "pm.test('upstream body is the native multimodal-generation shape', function () {",
+                          "  pm.expect(rr && rr.messages === undefined, 'compatible-mode chat shape leaked upstream (top-level messages): ' + JSON.stringify(rr || null)).to.be.true;",
+                          "  var part = rr && rr.input && rr.input.messages && rr.input.messages[0] && rr.input.messages[0].content && rr.input.messages[0].content[0];",
+                          "  pm.expect(part && part.type, 'missing input_audio part: ' + JSON.stringify(rr || null)).to.eql('input_audio');",
+                          "  pm.expect(part && part.input_audio && typeof part.input_audio.data === 'string' && part.input_audio.data.indexOf('data:audio/') === 0, 'audio must ride as a data URL: ' + JSON.stringify(rr || null)).to.be.true;",
+                          "});",
+                          "pm.test('parameters.format resolved from the filename', function () {",
+                          "  var got = rr && rr.parameters ? rr.parameters.format : undefined;",
+                          "  pm.expect(got, 'parameters.format missing - the native endpoint rejects format-less bodies: ' + JSON.stringify(rr || null)).to.eql('mp3');",
+                          "});"
+                        ]
+                      }
+                    }
+                  ],
+                  "request": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "x-bf-send-back-raw-request",
+                        "value": "true"
+                      }
+                    ],
+                    "body": {
+                      "mode": "formdata",
+                      "formdata": [
+                        {
+                          "key": "model",
+                          "value": "dashscope/qwen-audio-3.1-asr-flash",
+                          "type": "text"
+                        },
+                        {
+                          "key": "file",
+                          "src": "tests/e2e/api/fixtures/sample.mp3",
+                          "type": "file"
+                        }
+                      ]
+                    },
+                    "url": {
+                      "raw": "{{baseUrl}}/v1/audio/transcriptions",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "v1",
+                        "audio",
+                        "transcriptions"
+                      ]
+                    }
+                  }
+                },
+                {
+                  "name": "dashscope/qwen-audio-3.1-asr-flash (language -> parameters.language_hints)",
+                  "event": [
+                    {
+                      "listen": "test",
+                      "script": {
+                        "type": "text/javascript",
+                        "exec": [
+                          "// On the native path the standard multipart `language` field folds into",
+                          "// parameters.language_hints (an array) - not asr_options.language, which is",
+                          "// the compatible-mode-only shape and must not cross over. The pin reads",
+                          "// extra_fields.raw_request, the exact body sent upstream.",
+                          "var txt = pm.response.text() || '';",
+                          "pm.test('transcription with language returned success', function () {",
+                          "  pm.expect(pm.response.code, 'failed: ' + txt).to.be.below(400);",
+                          "});",
+                          "var body = {};",
+                          "try { body = pm.response.json() || {}; } catch (e) { body = {}; }",
+                          "var rr = (body.extra_fields || {}).raw_request;",
+                          "if (typeof rr === 'string') { try { rr = JSON.parse(rr); } catch (e) { rr = null; } }",
+                          "pm.test('language folded into parameters.language_hints on the native body', function () {",
+                          "  var got = rr && rr.parameters ? rr.parameters.language_hints : undefined;",
+                          "  pm.expect(got, 'parameters.language_hints missing - Params.Language was swallowed. raw_request: ' + JSON.stringify(rr || null)).to.eql(['en']);",
+                          "  pm.expect(rr && rr.asr_options === undefined, 'asr_options is compatible-mode-only and must not ride the native path: ' + JSON.stringify(rr || null)).to.be.true;",
+                          "});"
+                        ]
+                      }
+                    }
+                  ],
+                  "request": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "x-bf-send-back-raw-request",
+                        "value": "true"
+                      }
+                    ],
+                    "body": {
+                      "mode": "formdata",
+                      "formdata": [
+                        {
+                          "key": "model",
+                          "value": "dashscope/qwen-audio-3.1-asr-flash",
                           "type": "text"
                         },
                         {

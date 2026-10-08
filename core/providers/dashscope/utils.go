@@ -31,6 +31,7 @@ const (
 	headerXDashScopeSSE   = "X-DashScope-SSE"   // switches a native endpoint into SSE streaming
 	headerXDashScopeAsync = "X-DashScope-Async" // marks a native submit as an asynchronous task
 	headerValueEnable     = "enable"            // both native protocol switches take this value
+	headerValueDisable    = "disable"           // pins a native endpoint to a single JSON body
 )
 
 // dashScopeTaskPollingInterval is the interval between task status polls for
@@ -43,6 +44,26 @@ const dashScopeTaskPollingInterval = 3 * time.Second
 func isAsyncImageModel(model string) bool {
 	m := strings.ToLower(strings.TrimSpace(model))
 	return strings.HasPrefix(m, "wan")
+}
+
+// isNativeASRModel reports whether the model is a qwen-audio-3.x ASR flash
+// model served by the native multimodal-generation endpoint. The
+// OpenAI-compatible chat surface does not host this family (3.1 404s there,
+// 3.0 rejects the audio shape with UNSUPPORTED_FORMAT), so these route away
+// from the compatible-mode chat path that serves qwen3-asr-flash.
+func isNativeASRModel(model string) bool {
+	m := strings.ToLower(strings.TrimSpace(model))
+	return strings.HasPrefix(m, "qwen-audio-3.") && strings.Contains(m, "asr-flash") && !isUnsupportedASRVariant(m)
+}
+
+// isUnsupportedASRVariant reports whether the model is a qwen-audio-3.x ASR
+// variant Bifrost does not serve: the realtime/streaming members run on the
+// WebSocket realtime API and the filetrans members on the asynchronous task
+// API, neither of which is wired into the provider.
+func isUnsupportedASRVariant(model string) bool {
+	m := strings.ToLower(strings.TrimSpace(model))
+	return strings.HasPrefix(m, "qwen-audio-3.") && strings.Contains(m, "asr-flash") &&
+		(strings.Contains(m, "streaming") || strings.Contains(m, "filetrans"))
 }
 
 // isImageToImageModel reports whether the async model is an image-editing one

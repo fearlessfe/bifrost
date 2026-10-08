@@ -128,6 +128,95 @@ func (r *DashScopeTaskRequest) GetExtraParams() map[string]interface{} {
 	return nil
 }
 
+// DashScopeASRInputAudio carries the audio payload of an input_audio content
+// part on the native ASR path: a data URL (data:audio/<mime>;base64,...).
+type DashScopeASRInputAudio struct {
+	Data string `json:"data"`
+}
+
+// DashScopeASRContentPart is one part of a native ASR message's content
+// array. The qwen-audio-3.x transcription path sends exactly one input_audio
+// part per request.
+type DashScopeASRContentPart struct {
+	Type       string                  `json:"type"`
+	InputAudio *DashScopeASRInputAudio `json:"input_audio,omitempty"`
+}
+
+// DashScopeASRMessage is one message of a native ASR input.
+type DashScopeASRMessage struct {
+	Role    string                    `json:"role"`
+	Content []DashScopeASRContentPart `json:"content"`
+}
+
+// DashScopeASRInput is the input block for qwen-audio-3.x ASR on
+// multimodal-generation: a single user message carrying the audio part.
+type DashScopeASRInput struct {
+	Messages []DashScopeASRMessage `json:"messages"`
+}
+
+// DashScopeASRParameters is the parameters block for the native ASR call. The
+// audio container format is mandatory upstream; the remaining ASR knobs
+// (language_hints, sample_rate, vocabulary, vocabulary_id,
+// speaker_diarization_enabled, keep_dialect, ...) ride Extra and are merged
+// into the marshaled object.
+type DashScopeASRParameters struct {
+	Format string `json:"format"`
+
+	Extra map[string]interface{} `json:"-"`
+}
+
+// MarshalJSON merges Extra into the parameters object after the named fields.
+func (p *DashScopeASRParameters) MarshalJSON() ([]byte, error) {
+	type parametersAlias DashScopeASRParameters
+	base, err := schemas.MarshalSorted((*parametersAlias)(p))
+	if err != nil {
+		return nil, err
+	}
+	return mergeExtra(base, p.Extra)
+}
+
+// DashScopeASRRequest is the request body for the qwen-audio-3.x ASR models on
+// multimodal-generation.
+type DashScopeASRRequest struct {
+	Model      string                  `json:"model"`
+	Input      DashScopeASRInput       `json:"input"`
+	Parameters *DashScopeASRParameters `json:"parameters,omitempty"`
+}
+
+// GetExtraParams satisfies providerUtils.RequestBodyWithExtraParams. It
+// returns nil because MarshalJSON already merges extras into the nested
+// parameters object; handing them to the passthrough layer as well would
+// duplicate them at the JSON root.
+func (r *DashScopeASRRequest) GetExtraParams() map[string]interface{} {
+	return nil
+}
+
+// DashScopeASRUsage carries the native ASR usage: token counts plus the audio
+// duration in seconds.
+type DashScopeASRUsage struct {
+	InputTokens  *int     `json:"input_tokens,omitempty"`
+	OutputTokens *int     `json:"output_tokens,omitempty"`
+	TotalTokens  *int     `json:"total_tokens,omitempty"`
+	Duration     *float64 `json:"duration,omitempty"` // seconds
+}
+
+// DashScopeASRResponse is the multimodal-generation response for the
+// qwen-audio-3.x ASR models. The observed wire shape nests the result twice
+// (output.output.text); output.text is kept as a defensive fallback for
+// sibling shapes that answer flat.
+type DashScopeASRResponse struct {
+	Output struct {
+		Output *struct {
+			Text string `json:"text,omitempty"`
+		} `json:"output,omitempty"`
+		Text string `json:"text,omitempty"`
+	} `json:"output"`
+	Usage     *DashScopeASRUsage `json:"usage,omitempty"`
+	RequestID string             `json:"request_id,omitempty"`
+	Code      string             `json:"code,omitempty"`
+	Message   string             `json:"message,omitempty"`
+}
+
 // DashScopeUsage carries both the token usage (TTS) and image-count usage
 // (image APIs); the wire only fills whichever applies.
 type DashScopeUsage struct {

@@ -1,6 +1,6 @@
 ---
 title: "DashScope"
-description: "Alibaba Cloud DashScope (Bailian) integration guide - OpenAI-compatible chat via compatible-mode plus native TTS (qwen-tts), ASR (qwen3-asr-flash), and image generation (qwen-image, wanx)"
+description: "Alibaba Cloud DashScope (Bailian) integration guide - OpenAI-compatible chat via compatible-mode plus native TTS (qwen-tts), ASR (qwen3-asr-flash, qwen-audio-3.x-asr-flash), and image generation (qwen-image, wanx)"
 icon: "cloud"
 ---
 
@@ -10,7 +10,7 @@ DashScope is Alibaba Cloud's model service (Bailian / Model Studio), home of the
 
 - **OpenAI-compatible chat** - Chat Completions, streaming, tool calling, and the Responses API run through DashScope's `/compatible-mode` surface via Bifrost's shared OpenAI converters.
 - **Native audio & images** - TTS and image generation use the native DashScope protocol (`/api/v1`), which compatible-mode does not cover.
-- **Speech transcription** - `qwen3-asr-flash` runs through compatible-mode chat completions with the audio as an `input_audio` content block; DashScope has no Whisper-style `/audio/transcriptions` endpoint.
+- **Speech transcription** - `qwen3-asr-flash` runs through compatible-mode chat completions with the audio as an `input_audio` content block; the `qwen-audio-3.x-asr-flash` family is not hosted on compatible-mode and runs on the native multimodal-generation endpoint instead. DashScope has no Whisper-style `/audio/transcriptions` endpoint.
 
 ### Supported Operations
 
@@ -19,7 +19,7 @@ DashScope is Alibaba Cloud's model service (Bailian / Model Studio), home of the
 | Chat Completions | ✅ | ✅ | `/compatible-mode/v1/chat/completions` |
 | Responses API | ✅ | ✅ | `/compatible-mode/v1/chat/completions` |
 | Speech (TTS) | ✅ | ✅ | `/api/v1/services/aigc/multimodal-generation/generation` |
-| Transcriptions (STT) | ✅ | ❌ | `/compatible-mode/v1/chat/completions` (input_audio) |
+| Transcriptions (STT) | ✅ | ❌ | `/compatible-mode/v1/chat/completions` (qwen3-asr-flash) or `/api/v1/services/aigc/multimodal-generation/generation` (qwen-audio-3.x-asr-flash) |
 | Image Generation | ✅ | ❌ | `/api/v1/services/aigc/multimodal-generation/generation` (qwen-image, z-image) or task API (wan) |
 | Image Edit | ✅ | ❌ | `/api/v1/services/aigc/multimodal-generation/generation` (qwen-image-edit) |
 | List Models | ❌ | ❌ | - |
@@ -33,6 +33,7 @@ DashScope is Alibaba Cloud's model service (Bailian / Model Studio), home of the
 | Chat (Qwen) | `qwen-plus`, `qwen-max`, `qwen3-max` | compatible-mode (OpenAI protocol) |
 | TTS | `qwen-tts`, `qwen3-tts-flash`, `qwen3-tts-instruct-flash` | native |
 | ASR | `qwen3-asr-flash` | compatible-mode chat completions (input_audio) |
+| ASR (3.x) | `qwen-audio-3.0-asr-flash`, `qwen-audio-3.1-asr-flash` | native multimodal-generation |
 | Image (sync) | `qwen-image`, `qwen-image-plus`, `qwen-image-edit`, `z-image-turbo` | native |
 | Image (async tasks) | `wan2.2-t2i-flash`, `wan2.2-t2i-plus`, `wanx2.1-t2i-turbo`, `wanx2.1-t2i-plus`, `wan2.5-t2i-preview` | native task API (submit + poll) |
 
@@ -100,15 +101,21 @@ Streaming returns base64 audio chunks as they are synthesized.
 
 ## Transcriptions (STT)
 
-DashScope has no Whisper-style transcriptions endpoint, so Bifrost converts the uploaded file into a chat completion for `qwen3-asr-flash`: the audio bytes ride a single user message as a base64 `input_audio` content block, and the assistant's reply text comes back as the transcript. The client-facing request is unchanged; the audio format is inferred from the filename extension unless `file_format` is set explicitly.
+DashScope has no Whisper-style transcriptions endpoint, so Bifrost dispatches by model family. For `qwen3-asr-flash` it converts the uploaded file into a compatible-mode chat completion: the audio bytes ride a single user message as a base64 `input_audio` content block, and the assistant's reply text comes back as the transcript. For the `qwen-audio-3.x-asr-flash` family (3.0, 3.1), which compatible-mode does not host, Bifrost posts the same audio to the native multimodal-generation endpoint with the format in `parameters.format` and `language` folded into `parameters.language_hints`. The client-facing request is unchanged either way; the audio format is inferred from the filename extension unless `file_format` is set explicitly.
 
-DashScope's ASR options (`language`, `enable_itn`, ...) are non-standard: send them as extra form fields (or `extra_params.asr_options` in JSON) together with the `x-bf-passthrough-extra-params: true` header, and they are flattened onto the chat request body upstream as `asr_options`.
+DashScope's ASR options (`language`, `enable_itn`, ...) are non-standard: send them as extra form fields (or `extra_params.asr_options` in JSON) together with the `x-bf-passthrough-extra-params: true` header, and they are flattened onto the chat request body upstream as `asr_options`. Note `asr_options` is compatible-mode-only and is dropped on the native 3.x path; pass the 3.x family's knobs (`sample_rate`, `vocabulary`, `speaker_diarization_enabled`, `keep_dialect`, ...) as extra params instead, and they are merged into `parameters`. The `-streaming` and `-filetrans` variants of the 3.x family run on DashScope's WebSocket realtime and asynchronous task APIs and are rejected with a local error.
 
 ```bash
 curl -X POST http://localhost:8080/v1/audio/transcriptions \
   -H "Authorization: Bearer $BIFROST_KEY" \
   -F "model=dashscope/qwen3-asr-flash" \
   -F "file=@audio.mp3"
+
+curl -X POST http://localhost:8080/v1/audio/transcriptions \
+  -H "Authorization: Bearer $BIFROST_KEY" \
+  -F "model=dashscope/qwen-audio-3.1-asr-flash" \
+  -F "file=@audio.mp3" \
+  -F "language=en"
 ```
 
 ## Image Generation
