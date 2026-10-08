@@ -973,7 +973,7 @@ export const coreConfigSchema = z.object({
 	prometheus_labels: z.array(z.string()).default([]),
 	enable_logging: z.boolean().default(true),
 	disable_content_logging: z.boolean().default(false),
-	enforce_auth_on_inference: z.boolean().default(false),
+	enforce_auth_on_inference: z.boolean().default(true),
 	hide_deleted_virtual_keys_in_filters: z.boolean().default(false),
 	hidden_request_types: z.array(z.string()).default([]),
 	allowed_origins: z.array(z.string()).default(["*"]),
@@ -1554,3 +1554,9 @@ export type GlobalHeaderFilterFormSchema = z.infer<typeof globalHeaderFilterForm
 export type RoutingRuleSchema = z.infer<typeof routingRuleSchema>;
 export type BudgetOverrideFormSchema = z.infer<typeof budgetOverrideFormSchema>;
 export type ServiceTokenFormSchema = z.infer<typeof serviceTokenFormSchema>;
+// OSS setup lock: the operator's setup token entered on the login setup view.
+export const setupTokenFormSchema = z.object({
+	setup_token: z.string().trim().min(1, "Enter the setup token configured for this Bifrost instance"),
+});
+
+export type SetupTokenFormSchema = z.infer<typeof setupTokenFormSchema>;

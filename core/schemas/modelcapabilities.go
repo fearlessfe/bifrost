@@ -46,6 +46,7 @@ type ModelCapabilities struct {
 	SupportsAdaptiveThinking        *bool `json:"supports_adaptive_thinking,omitempty"`
 	SupportsNativeEffort            *bool `json:"supports_native_effort,omitempty"`
 	SupportsMidConversationSystem   *bool `json:"supports_mid_conversation_system_messages,omitempty"`
+	SupportsMidConvOutputConfig     *bool `json:"supports_mid_conversation_output_config,omitempty"`
 	SupportsSamplingParams          *bool `json:"supports_sampling_params,omitempty"` // false ⇒ temperature/top_p/top_k rejected (adaptive-only models)
 	SupportsRedactThinking          *bool `json:"supports_redact_thinking,omitempty"`
 	SupportsTaskBudgets             *bool `json:"supports_task_budgets,omitempty"`
@@ -181,6 +182,9 @@ type ModelCapabilities struct {
 	// Model accepts an explicit "off" — thinking:{type:"disabled"} or a zero
 	// budget. False on models that reject it, which need the config omitted.
 	SupportsReasoningDisable *bool `json:"supports_reasoning_disable,omitempty"`
+
+	// Effort the model applies when the request omits it ("none" means it does not reason).
+	DefaultReasoningEffort *string `json:"default_reasoning_effort,omitempty"`
 
 	// Model accepts thinking:{type:"between_tools"} (no up-front thinking).
 	SupportsBetweenToolsThinking *bool `json:"supports_between_tools_thinking,omitempty"`
